@@ -16,6 +16,7 @@ dist/
 web-build/
 
 #Archivo .env
+.env
+BACKEND/.env
 
-BACKEND/.env/
 
