@@ -88,7 +88,7 @@ exports.crearActaEntrega = async (req, res) => {
 
 
 //Acta de Retiro
-exports.crearActaRetiro = async (req, res)
+//exports.crearActaRetiro = async (req, res)
 
 
 
