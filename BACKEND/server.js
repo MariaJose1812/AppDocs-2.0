@@ -1,25 +1,16 @@
 require ('dotenv').config();
 const express = require ('express');
+const cors = require('cors');
 const db = require('./config/db');
 const actasRoutes = require('./routes/actasRoutes');
 const app = express();
 
+//Middlewares
+app.use(cors());
 app.use(express.json());
+
+//Rutas
 app.use('/api/actas', actasRoutes);
-
-
-// RUTA DE PRUEBA
-app.get('/prueba-db', async (req, res) => {
-    try {
-       console.log("Intentando conectar")
-        const [rows] = await db.query('SELECT 1 + 1 AS solucion');
-        console.log("Conexion exitosa")
-        res.json({ rows});
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Error conectando a la BD" });
-    }
-});
 
 app.get ('/usuarios', async (req, res) => {
     try{
@@ -30,6 +21,7 @@ app.get ('/usuarios', async (req, res) => {
     }
 });
 
-app.listen(3000, () => {
-    console.log("Servidor corriendo");
-})
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
+});
