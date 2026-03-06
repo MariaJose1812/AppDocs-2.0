@@ -54,7 +54,7 @@ exports.generarReporte = async (req, res) => {
     
         await connection.commit();
 
-        res.status(201).json({
+        res.status(201).json({ //Firma de emisor
             mensaje: "Reporte generado exitosamente",
             correlativo: nuevoCorrelativo,
             id: idNuevoEncabezado

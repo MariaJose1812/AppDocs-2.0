@@ -96,7 +96,7 @@ exports.crearMemorandum = async (req, res) => {
             id: idNuevoEncabezado,
             documentoPreview: {
                 parrafoIntro: `De: ${emisor.nomUsu.toUpperCase()} - ${emisor.cargoUsu}\nPara: ${nombreReceptor.toUpperCase()} - ${cargoReceptor}\nAsunto: ${asunto_MMEnc}\n\n${(items || []).map((item, index) => `${index + 1}. ${item.desc_MMDet}`).join('\n')}`, 
-                firmaUnica: {
+                firmaUnica: { //RECEPTOR
                     nombre: emisor.nomUsu,
                     cargo: emisor.cargoUsu
                 }
