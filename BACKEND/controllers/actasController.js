@@ -3,13 +3,12 @@ const db = require('../config/db');
 
 // METODO POST ACTA DE ENTREGA Y RETIRO
 exports.procesarActa = async (req, res) => {
-    const { tipo, idUsuario, idUsuarios, idEmpleados, idReceptores, asunto, items } = req.body;
+    const { tipo, idEmpleados, idReceptores, asunto, items } = req.body;
+    const idUsu = req.usuario.idUsuarios;
     const connection = await db.getConnection();
 
     try {
         await connection.beginTransaction();
-
-        const idUsu = idUsuario || idUsuarios; 
 
         const [userData] = await connection.query('SELECT nomUsu, cargoUsu FROM usuarios WHERE idUsuarios = ?', [idUsuarios]);
         const emisor = userData[0] || { nomUsu: 'Desconocido', cargoUsu: 'S/C' };

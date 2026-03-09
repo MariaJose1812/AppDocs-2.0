@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+
 const actasController = require('../controllers/actasController');
 const recepcionController = require('../controllers/recepcionController');
 const paseSalidaController = require('../controllers/paseSalidaController');
@@ -7,6 +8,8 @@ const memorandumController = require('../controllers/memorandumController');
 const oficiosController = require('../controllers/oficiosController');
 const reportesController = require('../controllers/reportesController');
 const catalogosController = require('../controllers/catalogosController');
+
+const dashboardController = require('../controllers/dashboardController');
 
 //Acta de Entrega y Retiro
 router.post ('/procesadas', actasController.procesarActa);
@@ -40,6 +43,10 @@ router.get('/oficios/todos', oficiosController.obtenerOficios);
 router.post('/reporte', reportesController.generarReporte);
 
 router.get('/reportes/todos', reportesController.obtenerReportes);
+
+//Historial
+router.get('/historial', dashboardController.obtenerHistorial);
+
 
 
 module.exports = router;
