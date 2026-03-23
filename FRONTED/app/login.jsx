@@ -26,7 +26,7 @@ export default function LoginScreen() {
   const [modalCrearVisible, setModalCrearVisible] = useState(false);
   const [nuevoUsuario, setNuevoUsuario] = useState({
     nomUsu: '',
-    correoUsu: '',
+    corUsu: '',
     cargoUsu: '',
     conUsu: ''
   });
@@ -53,6 +53,8 @@ export default function LoginScreen() {
 
       if (res.data.token) {
         await AsyncStorage.setItem('userToken', res.data.token);
+        await AsyncStorage.setItem('nomUsu', userSeleccionado.nomUsu);
+        await AsyncStorage.setItem('cargoUsu', userSeleccionado.cargoUsu);
         setUserSeleccionado(null);
         setPass('');
         router.replace('/dashboard');
@@ -66,7 +68,7 @@ export default function LoginScreen() {
   const abrirModalCrear = () => {
     setNuevoUsuario({
       nomUsu: '',
-      correoUsu: '',
+      corUsu: '',
       cargoUsu: '',
       conUsu: ''
     });
@@ -77,7 +79,7 @@ export default function LoginScreen() {
     try {
       if (
         !nuevoUsuario.nomUsu.trim() ||
-        !nuevoUsuario.correoUsu.trim() ||
+        !nuevoUsuario.corUsu.trim() ||
         !nuevoUsuario.cargoUsu.trim() ||
         !nuevoUsuario.conUsu.trim()
       ) {
@@ -95,7 +97,7 @@ export default function LoginScreen() {
 
       setNuevoUsuario({
         nomUsu: '',
-        correoUsu: '',
+        corUsu: '',
         cargoUsu: '',
         conUsu: ''
       });
@@ -104,12 +106,12 @@ export default function LoginScreen() {
         await AsyncStorage.setItem('userToken', usuarioCreado.token);
       }
 
-      router.replace('/dashboard');
+      router.replace('/usuarios');
     } catch (err) {
       console.log('Error creando usuario:', err.response?.data || err.message);
       Alert.alert(
         'Error',
-        'No se pudo crear el usuario. Verifica que exista el endpoint POST /usuarios en tu backend.'
+        'No se pudo crear el usuario.'
       );
     }
   };
@@ -264,9 +266,9 @@ export default function LoginScreen() {
 
             <TextInput
               style={styles.input}
-              value={nuevoUsuario.correoUsu}
+              value={nuevoUsuario.corUsu}
               onChangeText={(text) =>
-                setNuevoUsuario((prev) => ({ ...prev, correoUsu: text }))
+                setNuevoUsuario((prev) => ({ ...prev, corUsu: text }))
               }
               placeholder="Correo usuario"
               placeholderTextColor="#999"
@@ -308,7 +310,7 @@ export default function LoginScreen() {
                     setModalCrearVisible(false);
                     setNuevoUsuario({
                       nomUsu: '',
-                      correoUsu: '',
+                      corUsu: '',
                       cargoUsu: '',
                       conUsu: ''
                     });

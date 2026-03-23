@@ -1,32 +1,27 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter, usePathname } from 'expo-router';
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import Navbar from '../components/navBar';  
+import CustomScrollView from "../components/ScrollView"; 
 import Header from '../components/header';
 
 export default function GenerarDocsScreen() {
   const router = useRouter();
-  const pathname = usePathname();
 
   const modulos = [
     { id: '1', titulo: 'Acta de Entrega', ruta: '/actaEntrega', color: '#3ac40d', icon: "file-document-check-outline", desc: 'Gestión y control de actas de entrega de equipo.' },
-    { id: '2', titulo: 'Acta de Retiro', ruta: '/actaRetiro', color: '#cc7625', icon: "archive-arrow-down-outline", desc: 'Gestión y control de actas de retiro de equipo.' },
-    { id: '3', titulo: 'Acta Recepción', ruta: '/actaRecepcion', color: '#09528e', icon: "folder-download-outline", desc: 'Registro formal de recepción física de equipo.' },
-    { id: '4', titulo: 'Memorándums', ruta: '/memorandum', color: '#70e0f4', icon: "notebook-edit-outline", desc: 'Redacción de memorándums corporativos internos.' },
-    { id: '5', titulo: 'Oficios', ruta: '/oficios', color: '#333333', icon: "file-document-multiple", desc: 'Gestión de oficios y comunicados oficiales externos.' },
+    { id: '2', titulo: 'Acta de Retiro', ruta: '/actaRetiro', color: '#cc7625', icon: "file-document-arrow-right-outline", desc: 'Gestión y control de actas de retiro de equipo.' },
+    { id: '3', titulo: 'Acta de Recepción', ruta: '/actaRecepcion', color: '#09528e', icon: "folder-download-outline", desc: 'Registro formal de recepción física de equipo.' },
+    { id: '4', titulo: 'Memorándums', ruta: '/memorandum', color: '#70e0f4', icon: "file-sign", desc: 'Redacción de memorándums corporativos internos.' },
+    { id: '5', titulo: 'Oficios', ruta: '/oficios', color: '#333333', icon: "file-document-multiple-outline", desc: 'Gestión de oficios y comunicados oficiales externos.' },
     { id: '6', titulo: 'Pase de Salida', ruta: '/paseSalida', color: '#e63946', icon: "exit-to-app", desc: 'Autorización y control de salidas de personal o equipos.' },
-    { id: '7', titulo: 'Reportes', ruta: '/reportes', color: '#2a9d8f', icon: "chart-box-outline", desc: 'Generación de reportes de equipo.' },
+    { id: '7', titulo: 'Reportes', ruta: '/reportes', color: '#2a9d8f', icon: "file-chart-outline", desc: 'Generación de reportes de equipo.' },
   ];
 
-  const cerrarSesion = async () => {
-    await AsyncStorage.removeItem('userToken');
-    router.replace('/login');
-  };
-
-  
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -35,11 +30,8 @@ export default function GenerarDocsScreen() {
 
       <Navbar/> 
 
-      <ScrollView 
-        style={styles.scrollArea} 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true} 
-      ></ScrollView>
+      <CustomScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.contentWidth}>  
 
       {/* CONTENEDOR DE CUADRÍCULA */}
       <ScrollView contentContainerStyle={styles.scrollCenter} showsVerticalScrollIndicator={false}>
@@ -72,8 +64,10 @@ export default function GenerarDocsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
       </ScrollView>
+
+        </View>
+      </CustomScrollView>
     </SafeAreaView>
   );
 }

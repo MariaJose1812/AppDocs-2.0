@@ -71,7 +71,7 @@ router.post("/login", async (req, res) => {
     }
 
     const [rows] = await db.query(
-      "SELECT idUsuarios, nomUsu, cargoUsu, corUsu, conUsu FROM usuarios WHERE idUsuarios = ? LIMIT 1",
+      "SELECT idUsuarios, nomUsu, cargoUsu, corUsu, conUsu FROM usuarios WHERE idUsuarios = ? AND (estado = 'Activo' OR estado IS NULL) LIMIT 1",
       [idUsuarios]
     );
 

@@ -1,4 +1,3 @@
-// components/Navbar.jsx
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
@@ -9,9 +8,10 @@ export default function Navbar() {
 
   const navLinks = [
     { titulo: 'Documentos', ruta: '/generarDocs' },
-    { titulo: 'Dashboard', ruta: '/dashboard' },
+    { titulo: 'Historial', ruta: '/dashboard' },
     { titulo: 'Usuarios', ruta: '/usuarios' },
-    { titulo: 'Empleados', ruta: '/empleados' },
+    { titulo: 'Directorio', ruta: '/empleados' },
+    { titulo: 'Plantillas', ruta: '/plantillas' },
   ];
 
   return (
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
   },
   navItemActive: {
-    backgroundColor: '#09528e', // Azul corporativo
+    backgroundColor: '#09528e',
   },
   navText: {
     color: '#475569',

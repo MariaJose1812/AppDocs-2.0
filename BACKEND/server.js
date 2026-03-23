@@ -4,8 +4,13 @@ const cors = require('cors');
 
 const actasRoutes = require('./routes/actasRoutes');
 const authRoutes = require('./controllers/authController');
+const catalogosRoutes = require('./routes/catalogosRoutes');
 const authMiddleware = require('./middlewares/authmiddleware');
 const usuariosRoutes = require('./controllers/usuariosController');
+const empleadosRoutes = require('./controllers/empleadosController');
+const receptoresRoutes = require('./controllers/receptoresController');
+const plantillasRoutes = require("./routes/plantillasRoutes");
+
 
 const app = express();
 
@@ -15,8 +20,14 @@ app.use(express.json());
 
 // Rutas
 app.use('/api', usuariosRoutes);
+app.use('/api/catalogos', /*authMiddleware,*/ catalogosRoutes);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/actas', authMiddleware, actasRoutes);
+app.use('/api', empleadosRoutes); 
+app.use('/api', receptoresRoutes);
+app.use("/api", authMiddleware, plantillasRoutes);
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

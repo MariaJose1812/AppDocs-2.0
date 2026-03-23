@@ -16,9 +16,6 @@ router.post ('/procesadas', actasController.procesarActa);
 
 router.get('/procesadas/:tipo/:id', actasController.obtenerActaPorId);
 
-//Catalogos para Listbox
-router.get('/catalogos', catalogosController.getListaCatalogos);
-
 //Acta de Recepción
 router.post('/recepcion', recepcionController.recepcionActa);
 
@@ -46,6 +43,7 @@ router.get('/reportes/todos', reportesController.obtenerReportes);
 
 //Historial
 router.get('/historial', dashboardController.obtenerHistorial);
+router.get('/detalle/:tipo/:id', dashboardController.obtenerDetalle);
 
 
 
