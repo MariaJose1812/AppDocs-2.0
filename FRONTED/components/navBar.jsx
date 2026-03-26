@@ -12,6 +12,7 @@ export default function Navbar() {
     { titulo: 'Usuarios', ruta: '/usuarios' },
     { titulo: 'Directorio', ruta: '/empleados' },
     { titulo: 'Plantillas', ruta: '/plantillas' },
+    { titulo: 'Equipos', ruta: '/equipos' },
   ];
 
   return (

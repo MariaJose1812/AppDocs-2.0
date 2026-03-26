@@ -60,7 +60,7 @@ exports.createOficina = async (req, res) => {
 exports.getTiposEquipo = async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT DISTINCT tipo FROM equipo WHERE tipo IS NOT NULL AND tipo != ""',
+      "SELECT tipo FROM catalogo_tipos ORDER BY tipo ASC",
     );
     res.json(rows);
   } catch (error) {
@@ -71,7 +71,7 @@ exports.getTiposEquipo = async (req, res) => {
 exports.getMarcas = async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT DISTINCT marca FROM equipo WHERE marca IS NOT NULL AND marca != ""',
+      "SELECT marca FROM catalogo_marcas ORDER BY marca ASC",
     );
     res.json(rows);
   } catch (error) {
@@ -82,10 +82,59 @@ exports.getMarcas = async (req, res) => {
 exports.getModelos = async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT DISTINCT modelo FROM equipo WHERE modelo IS NOT NULL AND modelo != ""',
+      "SELECT modelo FROM catalogo_modelos ORDER BY modelo ASC",
     );
     res.json(rows);
   } catch (error) {
     res.status(500).json({ mensaje: "Error al obtener los modelos" });
+  }
+};
+
+// POST 
+exports.postTipo = async (req, res) => {
+  const { tipo } = req.body;
+  if (!tipo?.trim())
+    return res.status(400).json({ error: "El campo tipo es obligatorio." });
+  try {
+    await db.query("INSERT INTO catalogo_tipos (tipo) VALUES (?)", [
+      tipo.trim(),
+    ]);
+    res.json({ ok: true, tipo: tipo.trim() });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY")
+      return res.status(409).json({ error: "El tipo ya existe." });
+    res.status(500).json({ error: "Error al guardar el tipo." });
+  }
+};
+
+exports.postMarca = async (req, res) => {
+  const { marca } = req.body;
+  if (!marca?.trim())
+    return res.status(400).json({ error: "El campo marca es obligatorio." });
+  try {
+    await db.query("INSERT INTO catalogo_marcas (marca) VALUES (?)", [
+      marca.trim(),
+    ]);
+    res.json({ ok: true, marca: marca.trim() });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY")
+      return res.status(409).json({ error: "La marca ya existe." });
+    res.status(500).json({ error: "Error al guardar la marca." });
+  }
+};
+
+exports.postModelo = async (req, res) => {
+  const { modelo } = req.body;
+  if (!modelo?.trim())
+    return res.status(400).json({ error: "El campo modelo es obligatorio." });
+  try {
+    await db.query("INSERT INTO catalogo_modelos (modelo) VALUES (?)", [
+      modelo.trim(),
+    ]);
+    res.json({ ok: true, modelo: modelo.trim() });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY")
+      return res.status(409).json({ error: "El modelo ya existe." });
+    res.status(500).json({ error: "Error al guardar el modelo." });
   }
 };

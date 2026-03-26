@@ -9,6 +9,9 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
+  useWindowDimensions, // Responsividad real
+  Platform,
+  ScrollView, //Para hacer el modal scrolleable en pantallas pequeñas
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
@@ -20,9 +23,11 @@ import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
 export default function EmpleadosReceptoresScreen() {
+  const { width, height } = useWindowDimensions(); 
+  const isSmall = width < 400; 
+
   const [tipoActivo, setTipoActivo] = useState("empleados");
 
-  //Datos
   const [empleados, setEmpleados] = useState([]);
   const [receptores, setReceptores] = useState([]);
   const [oficinasLista, setOficinasLista] = useState([]);
@@ -30,7 +35,6 @@ export default function EmpleadosReceptoresScreen() {
   const [busqueda, setBusqueda] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
 
-  //Campos Empleados
   const [empNom, setEmpNom] = useState("");
   const [empCorreo, setEmpCorreo] = useState("");
   const [empDni, setEmpDni] = useState("");
@@ -39,13 +43,11 @@ export default function EmpleadosReceptoresScreen() {
   const [empCargoId, setEmpCargoId] = useState("");
   const [empCargo, setEmpCargo] = useState("");
 
-  //Campos Receptores
   const [recNom, setRecNom] = useState("");
   const [recCorreo, setRecCorreo] = useState("");
   const [recEmpresa, setRecEmpresa] = useState("");
   const [recCargo, setRecCargo] = useState("");
 
-  //Estados formularios
   const [mostrarNuevaOficina, setMostrarNuevaOficina] = useState(false);
   const [nuevaOfNom, setNuevaOfNom] = useState("");
   const [nuevaOfUnidad, setNuevaOfUnidad] = useState("");
@@ -62,20 +64,17 @@ export default function EmpleadosReceptoresScreen() {
     cargarDatos();
   }, []);
 
-  // Al cambiar oficina, limpiar unidad y cargo
   useEffect(() => {
     setEmpUnidad("");
     setEmpCargoId("");
     setEmpCargo("");
   }, [empOficinaId]);
 
-  // Al cambiar unidad, limpiar cargo
   useEffect(() => {
     setEmpCargoId("");
     setEmpCargo("");
   }, [empUnidad]);
 
-  //Carga de datos
   const cargarDatos = async () => {
     try {
       setCargando(true);
@@ -84,7 +83,6 @@ export default function EmpleadosReceptoresScreen() {
         api.get("/receptores"),
         api.get("/catalogos/oficinas"),
       ]);
-
       const empData = resEmpleados.data.map((e) => ({
         ...e,
         estado: e.estEmp || e.estado || "Activo",
@@ -93,7 +91,6 @@ export default function EmpleadosReceptoresScreen() {
         ...r,
         estado: r.estRec || r.estado || "Activo",
       }));
-
       setEmpleados(empData);
       setReceptores(recData);
       setOficinasLista(resOficinas.data);
@@ -105,7 +102,6 @@ export default function EmpleadosReceptoresScreen() {
     }
   };
 
-  //Guardar empleado / receptor
   const guardarRegistro = async () => {
     try {
       if (tipoActivo === "empleados") {
@@ -113,7 +109,6 @@ export default function EmpleadosReceptoresScreen() {
           Alert.alert("Atención", "Nombre, correo y oficina son obligatorios.");
           return;
         }
-
         let idOficinaFinal;
         if (empCargoId) {
           idOficinaFinal = parseInt(empCargoId);
@@ -121,20 +116,18 @@ export default function EmpleadosReceptoresScreen() {
           const oficinaSeleccionada = oficinasLista.find(
             (o) => o.nomOficina === empOficinaId,
           );
-
           if (!oficinaSeleccionada) {
             Alert.alert("Error", "No se encontró la oficina seleccionada.");
             return;
           }
           idOficinaFinal = oficinaSeleccionada.idOficina;
         }
-        const payload = {
+        await api.post("/empleados", {
           nomEmp: empNom,
           corEmp: empCorreo,
           idOficina: idOficinaFinal,
           dniEmp: empDni || null,
-        };
-        await api.post("/empleados", payload);
+        });
         Alert.alert("Éxito", "Empleado creado correctamente.");
       } else {
         if (!recNom || !recCorreo || !recEmpresa || !recCargo) {
@@ -144,13 +137,12 @@ export default function EmpleadosReceptoresScreen() {
           );
           return;
         }
-        const payload = {
+        await api.post("/receptores", {
           nomRec: recNom,
           corRec: recCorreo,
           emprRec: recEmpresa,
           cargoRec: recCargo,
-        };
-        await api.post("/receptores", payload);
+        });
         Alert.alert("Éxito", "Receptor creado correctamente.");
       }
       limpiarFormularios();
@@ -158,15 +150,12 @@ export default function EmpleadosReceptoresScreen() {
       cargarDatos();
     } catch (error) {
       console.error("Error al crear:", error);
-      if (error.response?.status === 409) {
+      if (error.response?.status === 409)
         Alert.alert("Error", "Este correo ya está registrado.");
-      } else {
-        Alert.alert("Error", "No se pudo crear el registro.");
-      }
+      else Alert.alert("Error", "No se pudo crear el registro.");
     }
   };
 
-  //Limpiar formularios
   const limpiarFormularios = () => {
     setEmpNom("");
     setEmpCorreo("");
@@ -190,7 +179,6 @@ export default function EmpleadosReceptoresScreen() {
     setNuevoCargo("");
   };
 
-  //ESTADO: ACTIVO - INACTIVO
   const toggleEstado = async (id, tipo, estadoActual) => {
     const nuevoEstado = estadoActual === "Activo" ? "Inactivo" : "Activo";
     const endpoint =
@@ -212,18 +200,14 @@ export default function EmpleadosReceptoresScreen() {
           ),
         );
       }
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "No se pudo cambiar el estado en la base de datos.");
     }
   };
 
-  //Crear nueva oficina
   const crearNuevaOficina = async () => {
     if (!nuevaOfNom || !nuevaOfUnidad || !nuevaOfCargo) {
-      Alert.alert(
-        "Atención",
-        "Todos los campos de la nueva oficina son obligatorios.",
-      );
+      Alert.alert("Atención", "Todos los campos son obligatorios.");
       return;
     }
     try {
@@ -239,12 +223,11 @@ export default function EmpleadosReceptoresScreen() {
       setNuevaOfCargo("");
       setMostrarNuevaOficina(false);
       Alert.alert("Éxito", "Oficina creada correctamente.");
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "No se pudo crear la oficina.");
     }
   };
 
-  //Crear nueva unidad
   const crearNuevaUnidad = async () => {
     if (!nuevaUnidad || !nuevaUnidadCargo) {
       Alert.alert("Atención", "Unidad y cargo son obligatorios.");
@@ -266,12 +249,11 @@ export default function EmpleadosReceptoresScreen() {
       setNuevaUnidadCargo("");
       setMostrarNuevaUnidad(false);
       Alert.alert("Éxito", "Unidad creada correctamente.");
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "No se pudo crear la unidad.");
     }
   };
 
-  //Crear nuevo cargo
   const crearNuevoCargo = async () => {
     if (!nuevoCargo) {
       Alert.alert("Atención", "El nombre del cargo es obligatorio.");
@@ -292,7 +274,7 @@ export default function EmpleadosReceptoresScreen() {
       setNuevoCargo("");
       setMostrarNuevoCargo(false);
       Alert.alert("Éxito", "Cargo creado correctamente.");
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "No se pudo crear el cargo.");
     }
   };
@@ -300,12 +282,9 @@ export default function EmpleadosReceptoresScreen() {
   const getInicial = (nombre) =>
     nombre ? nombre.charAt(0).toUpperCase() : "?";
 
-  //Oficinas únicas
   const oficinasUnicas = [
     ...new Map(oficinasLista.map((o) => [o.nomOficina, o])).values(),
   ];
-
-  //Unidades únicas filtradas por oficina seleccionada
   const unidadesDeLaOficina = empOficinaId
     ? [
         ...new Set(
@@ -316,8 +295,6 @@ export default function EmpleadosReceptoresScreen() {
         ),
       ]
     : [];
-
-  //Filas de cargo filtradas por oficina + unidad
   const cargosDeLaUnidad =
     empOficinaId && empUnidad
       ? oficinasLista.filter(
@@ -325,20 +302,15 @@ export default function EmpleadosReceptoresScreen() {
         )
       : [];
 
-  //Lista filtrada para la pantalla principal
   const datosFiltrados = (
     tipoActivo === "empleados" ? empleados : receptores
   ).filter((item) => {
     const texto = busqueda.toLowerCase();
-    const nombre = (item.nomEmp || item.nomRec || "").toLowerCase();
-    const correo = (item.corEmp || item.corRec || "").toLowerCase();
-    const cargo = (item.cargoEmp || item.cargoRec || "").toLowerCase();
-    const oficina = (item.nomOficina || "").toLowerCase();
     return (
-      nombre.includes(texto) ||
-      correo.includes(texto) ||
-      cargo.includes(texto) ||
-      oficina.includes(texto)
+      (item.nomEmp || item.nomRec || "").toLowerCase().includes(texto) ||
+      (item.corEmp || item.corRec || "").toLowerCase().includes(texto) ||
+      (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(texto) ||
+      (item.nomOficina || "").toLowerCase().includes(texto)
     );
   });
 
@@ -348,16 +320,20 @@ export default function EmpleadosReceptoresScreen() {
       <Navbar />
       <CustomScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.contentWidth}>
-          {/* ENCABEZADO */}
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.mainTitle}>Directorio</Text>
+          {/* ENCABEZADO: se apila en pantallas pequeñas */}
+          <View style={[styles.headerRow, isSmall && styles.headerRowSmall]}>
+            <View style={styles.headerTextBlock}>
+              <Text
+                style={[styles.mainTitle, isSmall && styles.mainTitleSmall]}
+              >
+                Directorio
+              </Text>
               <Text style={styles.subTitle}>
                 Administra empleados y receptores
               </Text>
             </View>
             <TouchableOpacity
-              style={styles.addBtn}
+              style={[styles.addBtn, isSmall && styles.addBtnSmall]}
               onPress={() => {
                 limpiarFormularios();
                 setModalVisible(true);
@@ -375,55 +351,42 @@ export default function EmpleadosReceptoresScreen() {
 
           {/* TABS */}
           <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[
-                styles.tabButton,
-                tipoActivo === "empleados" && styles.tabActive,
-              ]}
-              onPress={() => setTipoActivo("empleados")}
-            >
-              <MaterialCommunityIcons
-                name="badge-account-horizontal-outline"
-                size={20}
-                color={tipoActivo === "empleados" ? "#fff" : "#64748b"}
-              />
-              <Text
+            {["empleados", "receptores"].map((tab) => (
+              <TouchableOpacity
+                key={tab}
                 style={[
-                  styles.tabText,
-                  tipoActivo === "empleados" && styles.tabTextActive,
+                  styles.tabButton,
+                  tipoActivo === tab && styles.tabActive,
                 ]}
+                onPress={() => setTipoActivo(tab)}
               >
-                Empleados
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.tabButton,
-                tipoActivo === "receptores" && styles.tabActive,
-              ]}
-              onPress={() => setTipoActivo("receptores")}
-            >
-              <MaterialCommunityIcons
-                name="truck-delivery-outline"
-                size={20}
-                color={tipoActivo === "receptores" ? "#fff" : "#64748b"}
-              />
-              <Text
-                style={[
-                  styles.tabText,
-                  tipoActivo === "receptores" && styles.tabTextActive,
-                ]}
-              >
-                Receptores
-              </Text>
-            </TouchableOpacity>
+                <MaterialCommunityIcons
+                  name={
+                    tab === "empleados"
+                      ? "badge-account-horizontal-outline"
+                      : "truck-delivery-outline"
+                  }
+                  size={isSmall ? 17 : 20} 
+                  color={tipoActivo === tab ? "#fff" : "#64748b"}
+                />
+                <Text
+                  style={[
+                    styles.tabText,
+                    tipoActivo === tab && styles.tabTextActive,
+                    isSmall && styles.tabTextSmall,
+                  ]}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           {/* BÚSQUEDA */}
           <View style={styles.searchContainer}>
             <MaterialCommunityIcons
               name="magnify"
-              size={24}
+              size={22}
               color="#94a3b8"
               style={styles.searchIcon}
             />
@@ -472,7 +435,7 @@ export default function EmpleadosReceptoresScreen() {
                   const nombre = item.nomEmp || item.nomRec;
                   const correo = item.corEmp || item.corRec;
                   const cargo = item.cargoEmp || item.cargoRec;
-                  const empresa = item.emprRec || "Interno (Empleado)";
+                  const empresa = item.emprRec || "Interno";
                   const isActivo = item.estado === "Activo";
                   const oficinaTag = item.nomOficina;
 
@@ -504,19 +467,14 @@ export default function EmpleadosReceptoresScreen() {
                       </View>
 
                       <View style={styles.userInfo}>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
+                        <View style={styles.nameRow}>
                           <Text
                             style={[
                               styles.userName,
                               !isActivo && { color: "#64748b" },
                             ]}
                             numberOfLines={1}
+                            ellipsizeMode="tail"
                           >
                             {nombre}
                           </Text>
@@ -530,14 +488,21 @@ export default function EmpleadosReceptoresScreen() {
                         </View>
 
                         <View style={styles.badgeContainer}>
-                          <View style={styles.roleBadge}>
-                            <Text style={styles.roleBadgeText}>{cargo}</Text>
-                          </View>
+                          {cargo ? (
+                            <View style={styles.roleBadge}>
+                              <Text
+                                style={styles.roleBadgeText}
+                                numberOfLines={1}
+                              >
+                                {cargo}
+                              </Text>
+                            </View>
+                          ) : null}
                           {tipoActivo === "receptores" && (
                             <View
                               style={[
                                 styles.roleBadge,
-                                { backgroundColor: "#e0e7ff", marginLeft: 6 },
+                                { backgroundColor: "#e0e7ff" },
                               ]}
                             >
                               <Text
@@ -545,6 +510,7 @@ export default function EmpleadosReceptoresScreen() {
                                   styles.roleBadgeText,
                                   { color: "#4338ca" },
                                 ]}
+                                numberOfLines={1}
                               >
                                 {empresa}
                               </Text>
@@ -554,7 +520,7 @@ export default function EmpleadosReceptoresScreen() {
                             <View
                               style={[
                                 styles.roleBadge,
-                                { backgroundColor: "#fef3c7", marginLeft: 6 },
+                                { backgroundColor: "#fef3c7" },
                               ]}
                             >
                               <Text
@@ -562,6 +528,7 @@ export default function EmpleadosReceptoresScreen() {
                                   styles.roleBadgeText,
                                   { color: "#d97706" },
                                 ]}
+                                numberOfLines={1}
                               >
                                 {oficinaTag}
                               </Text>
@@ -572,12 +539,19 @@ export default function EmpleadosReceptoresScreen() {
                         <View style={styles.emailRow}>
                           <MaterialCommunityIcons
                             name="email-outline"
-                            size={16}
+                            size={13}
                             color="#64748b"
                           />
-                          <Text style={styles.emailText}>{correo}</Text>
+                          <Text
+                            style={styles.emailText}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {correo}
+                          </Text>
                         </View>
                       </View>
+
 
                       <View style={styles.switchContainer}>
                         <Text style={styles.switchLabel}>
@@ -607,10 +581,18 @@ export default function EmpleadosReceptoresScreen() {
         </View>
       </CustomScrollView>
 
-      {/*MODAL CREAR*/}
+      {/*MODAL CON SCROLLVIEW INTERNO para formularios largos */}
       <Modal visible={modalVisible} animationType="fade" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                width: Math.min(width - 32, 500),
+                maxHeight: height * 0.88,
+              },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View style={styles.modalIconContainer}>
                 <MaterialCommunityIcons
@@ -628,135 +610,63 @@ export default function EmpleadosReceptoresScreen() {
               </Text>
             </View>
 
-            {/*FORMULARIO EMPLEADO*/}
-            {tipoActivo === "empleados" ? (
-              <>
-                {/* Nombre */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Nombre Completo</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={empNom}
-                    onChangeText={setEmpNom}
-                    placeholder="Ej. Pablo Díaz"
-                  />
-                </View>
-
-                {/* DNI */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>DNI</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={empDni}
-                    onChangeText={setEmpDni}
-                    placeholder="0000-0000-00000"
-                    keyboardType="numeric"
-                  />
-                </View>
-
-                {/* Correo */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Correo Electrónico</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={empCorreo}
-                    onChangeText={setEmpCorreo}
-                    keyboardType="email-address"
-                    placeholder="correo@ejemplo.com"
-                  />
-                </View>
-
-                {/* OFICINA */}
-                <View style={styles.inputGroup}>
-                  <View style={styles.labelRow}>
-                    <Text style={styles.label}>Oficina</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setMostrarNuevaOficina(!mostrarNuevaOficina);
-                        setMostrarNuevaUnidad(false);
-                        setMostrarNuevoCargo(false);
-                      }}
-                    >
-                      <MaterialCommunityIcons
-                        name={
-                          mostrarNuevaOficina
-                            ? "close-circle-outline"
-                            : "plus-circle-outline"
-                        }
-                        size={20}
-                        color="#2563eb"
-                      />
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={empOficinaId}
-                      onValueChange={(v) => setEmpOficinaId(v)}
-                      style={styles.picker}
-                    >
-                      <Picker.Item
-                        label="Seleccione una oficina..."
-                        value=""
-                        color="#94a3b8"
-                      />
-                      {oficinasUnicas.map((ofi) => (
-                        <Picker.Item
-                          key={ofi.nomOficina}
-                          label={ofi.nomOficina}
-                          value={ofi.nomOficina}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
-                </View>
-
-                {mostrarNuevaOficina && (
-                  <View style={styles.inlineForm}>
-                    <Text style={styles.inlineFormTitle}>Nueva Oficina</Text>
+            {/* Contenido del formulario scrolleable */}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled" 
+            >
+              {tipoActivo === "empleados" ? (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nombre Completo</Text>
                     <TextInput
                       style={styles.input}
-                      value={nuevaOfNom}
-                      onChangeText={setNuevaOfNom}
-                      placeholder="Nombre de la oficina"
+                      value={empNom}
+                      onChangeText={setEmpNom}
+                      placeholder="Ej. Pablo Díaz"
+                      placeholderTextColor="#94a3b8"
                     />
-                    <View style={{ height: 8 }} />
-                    <TextInput
-                      style={styles.input}
-                      value={nuevaOfUnidad}
-                      onChangeText={setNuevaOfUnidad}
-                      placeholder="Unidad"
-                    />
-                    <View style={{ height: 8 }} />
-                    <TextInput
-                      style={styles.input}
-                      value={nuevaOfCargo}
-                      onChangeText={setNuevaOfCargo}
-                      placeholder="Cargo"
-                    />
-                    <TouchableOpacity
-                      style={styles.inlineBtn}
-                      onPress={crearNuevaOficina}
-                    >
-                      <Text style={styles.inlineBtnText}>Guardar Oficina</Text>
-                    </TouchableOpacity>
                   </View>
-                )}
 
-                {/* UNIDAD */}
-                {empOficinaId !== "" && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>DNI</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={empDni}
+                      onChangeText={setEmpDni}
+                      placeholder="0000-0000-00000"
+                      keyboardType="numeric"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Correo Electrónico</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={empCorreo}
+                      onChangeText={setEmpCorreo}
+                      keyboardType="email-address"
+                      placeholder="correo@ejemplo.com"
+                      autoCapitalize="none"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+
+                  {/* OFICINA */}
                   <View style={styles.inputGroup}>
                     <View style={styles.labelRow}>
-                      <Text style={styles.label}>Unidad</Text>
+                      <Text style={styles.label}>Oficina</Text>
                       <TouchableOpacity
                         onPress={() => {
-                          setMostrarNuevaUnidad(!mostrarNuevaUnidad);
-                          setMostrarNuevaOficina(false);
+                          setMostrarNuevaOficina(!mostrarNuevaOficina);
+                          setMostrarNuevaUnidad(false);
                           setMostrarNuevoCargo(false);
                         }}
                       >
                         <MaterialCommunityIcons
                           name={
-                            mostrarNuevaUnidad
+                            mostrarNuevaOficina
                               ? "close-circle-outline"
                               : "plus-circle-outline"
                           }
@@ -767,173 +677,263 @@ export default function EmpleadosReceptoresScreen() {
                     </View>
                     <View style={styles.pickerContainer}>
                       <Picker
-                        selectedValue={empUnidad}
-                        onValueChange={(v) => setEmpUnidad(v)}
+                        selectedValue={empOficinaId}
+                        onValueChange={(v) => setEmpOficinaId(v)}
                         style={styles.picker}
                       >
                         <Picker.Item
-                          label="Seleccione una unidad..."
+                          label="Seleccione una oficina..."
                           value=""
                           color="#94a3b8"
                         />
-                        {unidadesDeLaOficina.map((unidad) => (
+                        {oficinasUnicas.map((ofi) => (
                           <Picker.Item
-                            key={unidad}
-                            label={unidad}
-                            value={unidad}
+                            key={ofi.nomOficina}
+                            label={ofi.nomOficina}
+                            value={ofi.nomOficina}
                           />
                         ))}
                       </Picker>
                     </View>
                   </View>
-                )}
 
-                {mostrarNuevaUnidad && empOficinaId !== "" && (
-                  <View style={styles.inlineForm}>
-                    <Text style={styles.inlineFormTitle}>Nueva Unidad</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={nuevaUnidad}
-                      onChangeText={setNuevaUnidad}
-                      placeholder="Nombre de la unidad"
-                    />
-                    <View style={{ height: 8 }} />
-                    <TextInput
-                      style={styles.input}
-                      value={nuevaUnidadCargo}
-                      onChangeText={setNuevaUnidadCargo}
-                      placeholder="Cargo de esta unidad"
-                    />
-                    <TouchableOpacity
-                      style={styles.inlineBtn}
-                      onPress={crearNuevaUnidad}
-                    >
-                      <Text style={styles.inlineBtnText}>Guardar Unidad</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* CARGO */}
-                {empUnidad !== "" && (
-                  <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                      <Text style={styles.label}>Cargo</Text>
+                  {mostrarNuevaOficina && (
+                    <View style={styles.inlineForm}>
+                      <Text style={styles.inlineFormTitle}>Nueva Oficina</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={nuevaOfNom}
+                        onChangeText={setNuevaOfNom}
+                        placeholder="Nombre de la oficina"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <View style={{ height: 8 }} />
+                      <TextInput
+                        style={styles.input}
+                        value={nuevaOfUnidad}
+                        onChangeText={setNuevaOfUnidad}
+                        placeholder="Unidad"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <View style={{ height: 8 }} />
+                      <TextInput
+                        style={styles.input}
+                        value={nuevaOfCargo}
+                        onChangeText={setNuevaOfCargo}
+                        placeholder="Cargo"
+                        placeholderTextColor="#94a3b8"
+                      />
                       <TouchableOpacity
-                        onPress={() => {
-                          setMostrarNuevoCargo(!mostrarNuevoCargo);
-                          setMostrarNuevaOficina(false);
-                          setMostrarNuevaUnidad(false);
-                        }}
+                        style={styles.inlineBtn}
+                        onPress={crearNuevaOficina}
                       >
-                        <MaterialCommunityIcons
-                          name={
-                            mostrarNuevoCargo
-                              ? "close-circle-outline"
-                              : "plus-circle-outline"
-                          }
-                          size={20}
-                          color="#2563eb"
-                        />
+                        <Text style={styles.inlineBtnText}>
+                          Guardar Oficina
+                        </Text>
                       </TouchableOpacity>
                     </View>
-                    <View style={styles.pickerContainer}>
-                      <Picker
-                        selectedValue={empCargoId}
-                        onValueChange={(v) => setEmpCargoId(v)}
-                        style={styles.picker}
-                      >
-                        <Picker.Item
-                          label="Seleccione un cargo..."
-                          value=""
-                          color="#94a3b8"
-                        />
-                        {cargosDeLaUnidad.map((fila) => (
-                          <Picker.Item
-                            key={fila.idOficina}
-                            label={fila.cargoOfi}
-                            value={String(fila.idOficina)}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
-                  </View>
-                )}
+                  )}
 
-                {mostrarNuevoCargo && empUnidad !== "" && (
-                  <View style={styles.inlineForm}>
-                    <Text style={styles.inlineFormTitle}>Nuevo Cargo</Text>
+                  {/* UNIDAD */}
+                  {empOficinaId !== "" && (
+                    <View style={styles.inputGroup}>
+                      <View style={styles.labelRow}>
+                        <Text style={styles.label}>Unidad</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setMostrarNuevaUnidad(!mostrarNuevaUnidad);
+                            setMostrarNuevaOficina(false);
+                            setMostrarNuevoCargo(false);
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name={
+                              mostrarNuevaUnidad
+                                ? "close-circle-outline"
+                                : "plus-circle-outline"
+                            }
+                            size={20}
+                            color="#2563eb"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.pickerContainer}>
+                        <Picker
+                          selectedValue={empUnidad}
+                          onValueChange={(v) => setEmpUnidad(v)}
+                          style={styles.picker}
+                        >
+                          <Picker.Item
+                            label="Seleccione una unidad..."
+                            value=""
+                            color="#94a3b8"
+                          />
+                          {unidadesDeLaOficina.map((unidad) => (
+                            <Picker.Item
+                              key={unidad}
+                              label={unidad}
+                              value={unidad}
+                            />
+                          ))}
+                        </Picker>
+                      </View>
+                    </View>
+                  )}
+
+                  {mostrarNuevaUnidad && empOficinaId !== "" && (
+                    <View style={styles.inlineForm}>
+                      <Text style={styles.inlineFormTitle}>Nueva Unidad</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={nuevaUnidad}
+                        onChangeText={setNuevaUnidad}
+                        placeholder="Nombre de la unidad"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <View style={{ height: 8 }} />
+                      <TextInput
+                        style={styles.input}
+                        value={nuevaUnidadCargo}
+                        onChangeText={setNuevaUnidadCargo}
+                        placeholder="Cargo de esta unidad"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <TouchableOpacity
+                        style={styles.inlineBtn}
+                        onPress={crearNuevaUnidad}
+                      >
+                        <Text style={styles.inlineBtnText}>Guardar Unidad</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* CARGO */}
+                  {empUnidad !== "" && (
+                    <View style={styles.inputGroup}>
+                      <View style={styles.labelRow}>
+                        <Text style={styles.label}>Cargo</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setMostrarNuevoCargo(!mostrarNuevoCargo);
+                            setMostrarNuevaOficina(false);
+                            setMostrarNuevaUnidad(false);
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name={
+                              mostrarNuevoCargo
+                                ? "close-circle-outline"
+                                : "plus-circle-outline"
+                            }
+                            size={20}
+                            color="#2563eb"
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.pickerContainer}>
+                        <Picker
+                          selectedValue={empCargoId}
+                          onValueChange={(v) => setEmpCargoId(v)}
+                          style={styles.picker}
+                        >
+                          <Picker.Item
+                            label="Seleccione un cargo..."
+                            value=""
+                            color="#94a3b8"
+                          />
+                          {cargosDeLaUnidad.map((fila) => (
+                            <Picker.Item
+                              key={fila.idOficina}
+                              label={fila.cargoOfi}
+                              value={String(fila.idOficina)}
+                            />
+                          ))}
+                        </Picker>
+                      </View>
+                    </View>
+                  )}
+
+                  {mostrarNuevoCargo && empUnidad !== "" && (
+                    <View style={styles.inlineForm}>
+                      <Text style={styles.inlineFormTitle}>Nuevo Cargo</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={nuevoCargo}
+                        onChangeText={setNuevoCargo}
+                        placeholder="Nuevo cargo"
+                        placeholderTextColor="#94a3b8"
+                      />
+                      <TouchableOpacity
+                        style={styles.inlineBtn}
+                        onPress={crearNuevoCargo}
+                      >
+                        <Text style={styles.inlineBtnText}>Guardar Cargo</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nombre Completo</Text>
                     <TextInput
                       style={styles.input}
-                      value={nuevoCargo}
-                      onChangeText={setNuevoCargo}
-                      placeholder="Nuevo cargo"
+                      value={recNom}
+                      onChangeText={setRecNom}
+                      placeholder="Ej. Carlos Mendoza"
+                      placeholderTextColor="#94a3b8"
                     />
-                    <TouchableOpacity
-                      style={styles.inlineBtn}
-                      onPress={crearNuevoCargo}
-                    >
-                      <Text style={styles.inlineBtnText}>Guardar Cargo</Text>
-                    </TouchableOpacity>
                   </View>
-                )}
-              </>
-            ) : (
-              /*  FORMULARIO RECEPTOR */
-              <>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Nombre Completo</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={recNom}
-                    onChangeText={setRecNom}
-                    placeholder="Ej. Carlos Mendoza"
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Correo Electrónico</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={recCorreo}
-                    onChangeText={setRecCorreo}
-                    keyboardType="email-address"
-                    placeholder="correo@ejemplo.com"
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Empresa</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={recEmpresa}
-                    onChangeText={setRecEmpresa}
-                    placeholder="Ej. Tech Solutions S.A."
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Cargo</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={recCargo}
-                    onChangeText={setRecCargo}
-                    placeholder="Ej. Técnico de Soporte"
-                  />
-                </View>
-              </>
-            )}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Correo Electrónico</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={recCorreo}
+                      onChangeText={setRecCorreo}
+                      keyboardType="email-address"
+                      placeholder="correo@ejemplo.com"
+                      autoCapitalize="none"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Empresa</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={recEmpresa}
+                      onChangeText={setRecEmpresa}
+                      placeholder="Ej. Tech Solutions S.A."
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Cargo</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={recCargo}
+                      onChangeText={setRecCargo}
+                      placeholder="Ej. Técnico de Soporte"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                </>
+              )}
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={guardarRegistro}
-              >
-                <Text style={styles.saveBtnText}>Guardar</Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setModalVisible(false)}
+                >
+                  <Text style={styles.cancelBtnText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.saveBtn}
+                  onPress={guardarRegistro}
+                >
+                  <Text style={styles.saveBtnText}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -943,44 +943,56 @@ export default function EmpleadosReceptoresScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f1f5f9" },
-  scrollContent: { padding: 20, alignItems: "center", paddingBottom: 60 },
+  scrollContent: { padding: 16, alignItems: "center", paddingBottom: 80 },
   contentWidth: { width: "100%", maxWidth: 900 },
 
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 18,
+    flexWrap: "wrap",
+    gap: 12,
   },
-  mainTitle: { fontSize: 26, fontWeight: "800", color: "#0f172a" },
-  subTitle: { fontSize: 14, color: "#64748b", marginTop: 2 },
+  headerRowSmall: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
+  headerTextBlock: { flexShrink: 1 },
+  mainTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
+  mainTitleSmall: { fontSize: 20 },
+  subTitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
 
   addBtn: {
     flexDirection: "row",
     backgroundColor: "#2563eb",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     borderRadius: 10,
     alignItems: "center",
     elevation: 4,
   },
-  addBtnText: { color: "#fff", fontWeight: "600", marginLeft: 8, fontSize: 15 },
+  addBtnSmall: {
+    alignSelf: "stretch",
+    justifyContent: "center",
+  },
+  addBtnText: { color: "#fff", fontWeight: "600", marginLeft: 8, fontSize: 14 },
 
   tabContainer: {
     flexDirection: "row",
     backgroundColor: "#e2e8f0",
     borderRadius: 12,
     padding: 4,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   tabButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 8,
-    gap: 8,
+    gap: 6,
   },
   tabActive: {
     backgroundColor: "#2563eb",
@@ -990,94 +1002,123 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  tabText: { fontSize: 15, fontWeight: "600", color: "#64748b" },
+  tabText: { fontSize: 14, fontWeight: "600", color: "#64748b" },
   tabTextActive: { color: "#ffffff" },
+  tabTextSmall: { fontSize: 13 },
 
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 12,
-    paddingHorizontal: 15,
-    marginBottom: 25,
+    paddingHorizontal: 12,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
-  searchIcon: { marginRight: 10 },
+  searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
-    height: 50,
-    fontSize: 15,
+    height: 48,
+    fontSize: 14,
     color: "#1e293b",
-    outlineStyle: "none",
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}), // ✅ Solo en web
   },
-  clearIcon: { padding: 5 },
+  clearIcon: { padding: 6 },
 
-  listContainer: { gap: 16 },
+  listContainer: { gap: 12 },
+
+  // Tarjeta con layout que no desborda
   userCard: {
     backgroundColor: "#ffffff",
-    padding: 18,
-    borderRadius: 16,
+    padding: 14,
+    borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
     shadowColor: "#64748b",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
+    shadowRadius: 10,
     elevation: 2,
   },
   cardBloqueada: { opacity: 0.6, backgroundColor: "#f8fafc" },
+
   avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    minWidth: 44, 
+    borderRadius: 22,
     backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 16,
+    marginRight: 12,
     borderWidth: 1,
     borderColor: "#dbeafe",
   },
-  avatarText: { fontSize: 18, fontWeight: "700", color: "#2563eb" },
-  userInfo: { flex: 1, justifyContent: "center" },
+  avatarText: { fontSize: 17, fontWeight: "700", color: "#2563eb" },
+
+  userInfo: { flex: 1, justifyContent: "center", minWidth: 0 }, 
+
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 3,
+  },
   userName: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "700",
     color: "#1e293b",
-    marginBottom: 4,
+    flexShrink: 1, // Se comprime antes de empujar el badge
   },
   badgeInactivo: {
     backgroundColor: "#fee2e2",
-    paddingHorizontal: 6,
+    paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  badgeInactivoText: { fontSize: 10, color: "#ef4444", fontWeight: "bold" },
-  badgeContainer: { flexDirection: "row", marginBottom: 6 },
+  badgeInactivoText: { fontSize: 9, color: "#ef4444", fontWeight: "bold" },
+
+  // Badges con flexWrap para bajar si no caben
+  badgeContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginBottom: 5,
+  },
   roleBadge: {
     backgroundColor: "#f1f5f9",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 6,
+    maxWidth: 140, 
   },
-  roleBadgeText: { fontSize: 12, fontWeight: "600", color: "#475569" },
-  emailRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  emailText: { fontSize: 14, color: "#64748b", marginLeft: 6 },
+  roleBadgeText: { fontSize: 11, fontWeight: "600", color: "#475569" },
+
+  emailRow: { flexDirection: "row", alignItems: "center" },
+  emailText: {
+    fontSize: 13,
+    color: "#64748b",
+    marginLeft: 5,
+    flex: 1, 
+  },
+
   switchContainer: {
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 10,
+    marginLeft: 8,
+    minWidth: 56,
   },
   switchLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: "#64748b",
-    marginBottom: 4,
+    marginBottom: 3,
     fontWeight: "600",
   },
 
   emptyState: {
     alignItems: "center",
-    paddingVertical: 60,
+    paddingVertical: 50,
     backgroundColor: "#fff",
     borderRadius: 16,
     borderStyle: "dashed",
@@ -1085,7 +1126,7 @@ const styles = StyleSheet.create({
     borderColor: "#e2e8f0",
   },
   emptyStateTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
     color: "#1e293b",
     marginTop: 10,
@@ -1096,16 +1137,19 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 16,
   },
   modalContent: {
-    width: "100%",
-    maxWidth: 500,
     backgroundColor: "#ffffff",
     borderRadius: 20,
-    padding: 28,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  modalHeader: { flexDirection: "row", alignItems: "center", marginBottom: 24 },
+  modalHeader: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   modalIconContainer: {
     width: 40,
     height: 40,
@@ -1115,32 +1159,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  modalTitle: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a", flex: 1 }, 
 
-  inputGroup: { marginBottom: 16 },
+  inputGroup: { marginBottom: 14 },
   labelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 7,
   },
   label: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: "#475569",
     textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   input: {
     backgroundColor: "#f8fafc",
     borderWidth: 1,
     borderColor: "#e2e8f0",
     borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 15,
     color: "#1e293b",
   },
-  inputDisabled: { backgroundColor: "#e2e8f0", color: "#64748b" },
 
   pickerContainer: {
     backgroundColor: "#f8fafc",
@@ -1154,32 +1198,32 @@ const styles = StyleSheet.create({
     width: "100%",
     color: "#1e293b",
     backgroundColor: "transparent",
-    borderWidth: 0,
-    outlineStyle: "none",
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}), // Solo en web
   },
 
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 28,
-    gap: 12,
+    marginTop: 20,
+    marginBottom: 4,
+    gap: 10,
   },
   cancelBtn: {
     backgroundColor: "#ffffff",
     borderWidth: 1,
     borderColor: "#cbd5e1",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
     borderRadius: 10,
   },
-  cancelBtnText: { color: "#475569", fontSize: 15, fontWeight: "700" },
+  cancelBtnText: { color: "#475569", fontSize: 14, fontWeight: "700" },
   saveBtn: {
     backgroundColor: "#2563eb",
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    paddingVertical: 11,
+    paddingHorizontal: 22,
     borderRadius: 10,
   },
-  saveBtnText: { color: "#ffffff", fontSize: 15, fontWeight: "700" },
+  saveBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
 
   inlineForm: {
     backgroundColor: "#f0f9ff",
@@ -1187,11 +1231,11 @@ const styles = StyleSheet.create({
     borderColor: "#bae6fd",
     borderRadius: 12,
     padding: 14,
-    marginBottom: 16,
-    marginTop: -8,
+    marginBottom: 14,
+    marginTop: -6,
   },
   inlineFormTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: "#0369a1",
     marginBottom: 10,

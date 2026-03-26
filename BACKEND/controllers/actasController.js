@@ -26,6 +26,9 @@ exports.procesarActa = async (req, res) => {
 
     let nombreReceptor = "Desconocido";
     let cargoReceptor = "S/C";
+    let oficinaReceptor = "";
+    let unidadReceptor = "";
+    let empresaReceptor = "";
 
     if (idEmpleados) {
       const [empData] = await connection.query(
@@ -44,7 +47,7 @@ exports.procesarActa = async (req, res) => {
       }
     } else if (idReceptores) {
       const [recepData] = await connection.query(
-        "SELECT nomRec, emprRec FROM receptores WHERE idReceptores = ?",
+        "SELECT nomRec, cargoRec, emprRec FROM receptores WHERE idReceptores = ?",
         [idReceptores],
       );
       if (recepData.length > 0) {
@@ -59,6 +62,34 @@ exports.procesarActa = async (req, res) => {
     let nuevoCorrelativo = "";
     let idNuevoEncabezado = 0;
     let itemsGuardados = [];
+
+    const obtenerOCrearEquipo = async (item) => {
+      const serieNorm = (item.serie || "S/N").trim();
+ 
+      // Evita duplicar por número de serie
+      const [existente] = await connection.query(
+       "SELECT idEquipo FROM equipo WHERE serie = ? LIMIT 1",
+        [serieNorm],
+      );
+ 
+      if (existente.length > 0) {
+        return existente[0].idEquipo;
+      }
+ 
+      const [resNuevo] = await connection.query(
+        `INSERT INTO equipo (tipo, marca, modelo, serie, numFich, numInv)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          item.tipo   || "No especificado",
+          item.marca  || "No especificada",
+          item.modelo || "No especificado",
+          serieNorm,
+          item.numFicha || item.numFich || item.numeroFicha || null,
+          item.numInv   || item.numeroInventario            || null,
+        ],
+      );
+      return resNuevo.insertId;
+    };
 
     //RETIRO
     if (tipo === "RETIRO") {
@@ -93,22 +124,22 @@ exports.procesarActa = async (req, res) => {
         const valoresDetalle = [];
 
         for (const item of items) {
-          let idEquipoActual = item.idEquipo;
+          const idEquipoActual = item.idEquipo || await obtenerOCrearEquipo(item);
 
           //SI EL EQUIPO ES NUEVO
           if (!idEquipoActual) {
             const queryNuevoEquipo = `
-                INSERT INTO equipo (marca, modelo, serie, numInv) 
-                VALUES (?, ?, ?, ?)
-            `;
+            INSERT INTO equipo (tipo, marca, modelo, serie, numFich, numInv) 
+            VALUES (?, ?, ?, ?, ?, ?)`;
             const [resNuevoEquipo] = await connection.query(queryNuevoEquipo, [
+              item.tipo || "No especificado",
               item.marca || "No especificada",
               item.modelo || "No especificado",
               item.serie || "S/N",
-              item.numInv || "S/N",
+              item.numFich || item.numFicha || null,
+              item.numInv || null,
             ]);
 
-            //CAPTURA EL NUEVO ID GENERADO
             idEquipoActual = resNuevoEquipo.insertId;
           }
 
@@ -117,10 +148,9 @@ exports.procesarActa = async (req, res) => {
           //GUARDA EN EL DETALLE USANDO EL ID
           valoresDetalle.push([
             idNuevoEncabezado,
-            idEquipoActual,
             descripcionFinal,
-            "",
-            item.observacion || "",
+            observacion || "",
+            idEquipoActual,
           ]);
 
           itemsGuardados.push({
@@ -172,7 +202,7 @@ exports.procesarActa = async (req, res) => {
         const valoresDetalle = [];
 
         for (const item of items) {
-          let idEquipoActual = item.idEquipo;
+          const idEquipoActual = item.idEquipo || await obtenerOCrearEquipo(item);
 
           if (!idEquipoActual) {
             const queryNuevoEquipo = `
@@ -285,9 +315,9 @@ exports.obtenerActaPorId = async (req, res) => {
         `SELECT d.idActa_RetiroDet, d.idEquipo, d.desc_ARDet,
           d.observa_ARDet,
           e.tipo, e.marca, e.modelo, e.serie, e.numFich, e.numInv
-   FROM acta_retiro_detalle d
-   LEFT JOIN equipo e ON d.idEquipo = e.idEquipo
-   WHERE d.idActa_RetiroEnc = ?`,
+         FROM acta_retiro_detalle d
+         LEFT JOIN equipo e ON d.idEquipo = e.idEquipo
+         WHERE d.idActa_RetiroEnc = ?`,
         [id],
       );
       detalles = detData.map((d) => ({

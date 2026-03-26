@@ -47,6 +47,7 @@ export default function DashboardScreen() {
   const obtenerNombreTipo = (tipo) => {
     const tipos = {
       acta_entrega_encabezado: "Acta de Entrega",
+      acta_retiro_encabezado: "Acta de Retiro",
       acta_recepcion_encabezado: "Acta de Recepción",
     };
     return tipos[tipo] || tipo;

@@ -14,5 +14,9 @@ router.get('/tiposEquipo', catalogosController.getTiposEquipo);
 router.get('/marcas', catalogosController.getMarcas);
 router.get('/modelos', catalogosController.getModelos);
 
+router.post('/tiposEquipo', catalogosController.postTipo);
+router.post('/marcas',      catalogosController.postMarca);
+router.post('/modelos',     catalogosController.postModelo);
+
 
 module.exports = router;

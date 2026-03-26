@@ -9,7 +9,8 @@ const authMiddleware = require('./middlewares/authmiddleware');
 const usuariosRoutes = require('./controllers/usuariosController');
 const empleadosRoutes = require('./controllers/empleadosController');
 const receptoresRoutes = require('./controllers/receptoresController');
-const plantillasRoutes = require("./routes/plantillasRoutes");
+const plantillasRoutes = require('./routes/plantillasRoutes');
+const equiposRoutes = require('./routes/equiposRoutes');
 
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/api/actas', authMiddleware, actasRoutes);
 app.use('/api', empleadosRoutes); 
 app.use('/api', receptoresRoutes);
 app.use("/api", authMiddleware, plantillasRoutes);
+app.use('/api', equiposRoutes);
 
 
 const PORT = process.env.PORT || 3000;

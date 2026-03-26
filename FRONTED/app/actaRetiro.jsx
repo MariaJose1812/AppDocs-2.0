@@ -370,16 +370,16 @@ export default function ActaRetiroScreen() {
         obtenerPlantillaActiva("RETIRO"),
       ]);
 
+      const columnasRetiro = c.columnasTabla.filter(
+        (col) => col !== "asignado",
+      );
+
       const colLabels = {
         marca: c.labelMarca,
         modelo: c.labelModelo,
         serie: c.labelSerie,
         asignado: c.labelAsignado,
       };
-
-      /*const columnasRetiro = c.columnasTabla.filter(
-        (col) => col !== "asignado",
-      );*/
 
       const theadHTML = columnasRetiro
         .map((col) => `<th>${colLabels[col] || col}</th>`)
