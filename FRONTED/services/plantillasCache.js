@@ -82,4 +82,9 @@ export const getConfigDefault = () => ({
   labelModelo: "Modelo",
   labelSerie: "S/N - Inventario",
   labelAsignado: "Asignado a",
+  labelDesc: "Descripción",
+  labelPrecio: "Precio",
+  labelRecibo: "# Recibo",
+  labelFactura: "# Factura",
+  labelFecha: "Fecha",
 });

@@ -90,7 +90,7 @@ exports.getModelos = async (req, res) => {
   }
 };
 
-// POST 
+// POST
 exports.postTipo = async (req, res) => {
   const { tipo } = req.body;
   if (!tipo?.trim())
@@ -136,5 +136,49 @@ exports.postModelo = async (req, res) => {
     if (error.code === "ER_DUP_ENTRY")
       return res.status(409).json({ error: "El modelo ya existe." });
     res.status(500).json({ error: "Error al guardar el modelo." });
+  }
+};
+
+exports.getMarcasPorTipo = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT marca FROM equipo 
+       WHERE tipo = ? AND marca IS NOT NULL AND marca != ''
+       ORDER BY marca ASC`,
+      [req.params.tipo],
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getModelosPorTipoMarca = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT DISTINCT modelo FROM equipo 
+       WHERE tipo = ? AND marca = ? AND modelo IS NOT NULL AND modelo != ''
+       ORDER BY modelo ASC`,
+      [req.params.tipo, req.params.marca],
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.getEmpleadosPorOficina = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT e.idEmpleados, e.nomEmp, o.nomOficina, o.unidad, o.cargoOfi
+       FROM empleados e
+       JOIN oficina o ON e.idOficina = o.idOficina
+       WHERE o.nomOficina = ? AND e.estEmp = 'Activo'
+       ORDER BY e.nomEmp ASC`,
+      [req.params.nomOficina],
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };

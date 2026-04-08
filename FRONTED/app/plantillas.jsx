@@ -7,23 +7,51 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
+import { useTheme } from "../hooks/themeContext";
+import { Colors } from "../constants/theme";
+
 import { invalidarCache } from "../services/plantillasCache";
 import api from "../services/api";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import CustomScrollView from "../components/ScrollView";
 
-const TIPOS = ["ENTREGA", "RETIRO"];
+const TIPOS = [
+  { key: "ENTREGA", label: "Acta de Entrega" },
+  { key: "RETIRO", label: "Acta de Retiro" },
+  { key: "RECEPCION", label: "Acta de Recepción" },
+  { key: "MEMORANDUM", label: "Memorándum" },
+  { key: "OFICIO", label: "Oficio" },
+  { key: "PASE_SALIDA", label: "Pase de Salida" },
+  { key: "REPORTE", label: "Reporte" },
+];
 
 export default function PlantillasScreen() {
   const router = useRouter();
   const [tipoSel, setTipoSel] = useState("ENTREGA");
   const [plantillas, setPlantillas] = useState([]);
   const [cargando, setCargando] = useState(true);
+
+  // Variables de tema dinámico
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  // Colores dinámicos adaptables
+  const bg = Colors?.[theme]?.background || (isDark ? "#0f172a" : "#f8fafc");
+  const textColor = Colors?.[theme]?.text || (isDark ? "#f8fafc" : "#1e293b");
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+  const surfaceBg = isDark ? "#1e293b" : "#ffffff";
+  const borderCol = isDark ? "#334155" : "#e2e8f0";
+  const highlightCol = isDark ? "#60a5fa" : "#09528e";
+  const badgeBgActive = isDark ? "#064e3b" : "#dcfce7";
+  const badgeTextActive = isDark ? "#4ade80" : "#16a34a";
+  const dangerCol = isDark ? "#f87171" : "#dc2626";
 
   useFocusEffect(
     useCallback(() => {
@@ -46,7 +74,7 @@ export default function PlantillasScreen() {
   const activar = async (id) => {
     try {
       await api.put(`/plantillas/${id}/activar`);
-      await invalidarCache(tipoSel); 
+      await invalidarCache(tipoSel);
       cargar();
     } catch (e) {
       Alert.alert("Error", "No se pudo activar la plantilla.");
@@ -59,32 +87,30 @@ export default function PlantillasScreen() {
         .delete(`/plantillas/${id}`)
         .then(cargar)
         .catch(() => {
-          if (Platform.OS === "web") {
-            window.alert("No se puede eliminar la plantilla activa.");
-          } else {
-            Alert.alert("Error", "No se puede eliminar la plantilla activa.");
-          }
+          Platform.OS === "web"
+            ? window.alert("No se puede eliminar la plantilla activa.")
+            : Alert.alert("Error", "No se puede eliminar la plantilla activa.");
         });
 
-    if (Platform.OS === "web") {
-      if (window.confirm("¿Eliminar esta plantilla?")) ejecutar();
-    } else {
-      Alert.alert("Confirmar", "¿Eliminar esta plantilla?", [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Eliminar", style: "destructive", onPress: ejecutar },
-      ]);
-    }
+    Platform.OS === "web"
+      ? window.confirm("¿Eliminar esta plantilla?") && ejecutar()
+      : Alert.alert("Confirmar", "¿Eliminar esta plantilla?", [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Eliminar", style: "destructive", onPress: ejecutar },
+        ]);
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
       <Header />
       <Navbar />
       <CustomScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.topRow}>
-          <Text style={styles.title}>Plantillas de Documentos</Text>
+          <Text style={[styles.title, { color: textColor }]}>
+            Plantillas de Documentos
+          </Text>
           <TouchableOpacity
-            style={styles.nuevaBtn}
+            style={[styles.nuevaBtn, { backgroundColor: highlightCol }]}
             onPress={() =>
               router.push({
                 pathname: "/editarPlantilla",
@@ -97,30 +123,43 @@ export default function PlantillasScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* TABS */}
-        <View style={styles.tabs}>
-          {TIPOS.map((tipo) => (
+        {/* TABS — scroll horizontal */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {TIPOS.map(({ key, label }) => (
             <TouchableOpacity
-              key={tipo}
-              style={[styles.tab, tipoSel === tipo && styles.tabActivo]}
-              onPress={() => setTipoSel(tipo)}
+              key={key}
+              style={[
+                styles.tab,
+                { backgroundColor: surfaceBg, borderColor: borderCol },
+                tipoSel === key && {
+                  backgroundColor: highlightCol,
+                  borderColor: highlightCol,
+                },
+              ]}
+              onPress={() => setTipoSel(key)}
             >
               <Text
                 style={[
                   styles.tabText,
-                  tipoSel === tipo && styles.tabTextActivo,
+                  { color: subColor },
+                  tipoSel === key && { color: "#fff" },
                 ]}
               >
-                Acta de {tipo.charAt(0) + tipo.slice(1).toLowerCase()}
+                {label}
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
 
         {cargando ? (
           <ActivityIndicator
             size="large"
-            color="#09528e"
+            color={highlightCol}
             style={{ marginTop: 40 }}
           />
         ) : plantillas.length === 0 ? (
@@ -128,9 +167,9 @@ export default function PlantillasScreen() {
             <MaterialCommunityIcons
               name="file-document-outline"
               size={48}
-              color="#94a3b8"
+              color={subColor}
             />
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: subColor }]}>
               No hay plantillas para este tipo.
             </Text>
           </View>
@@ -138,16 +177,32 @@ export default function PlantillasScreen() {
           plantillas.map((p) => (
             <View
               key={p.idPlantilla}
-              style={[styles.card, p.activa && styles.cardActiva]}
+              style={[
+                styles.card,
+                {
+                  backgroundColor: surfaceBg,
+                  borderLeftColor: borderCol,
+                  shadowColor: isDark ? "#000" : "#94a3b8",
+                },
+                p.activa && { borderLeftColor: highlightCol },
+              ]}
             >
               <View style={styles.cardLeft}>
                 {p.activa && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>ACTIVA</Text>
+                  <View
+                    style={[styles.badge, { backgroundColor: badgeBgActive }]}
+                  >
+                    <Text
+                      style={[styles.badgeText, { color: badgeTextActive }]}
+                    >
+                      ACTIVA
+                    </Text>
                   </View>
                 )}
-                <Text style={styles.cardNombre}>{p.nombrePlantilla}</Text>
-                <Text style={styles.cardFecha}>
+                <Text style={[styles.cardNombre, { color: textColor }]}>
+                  {p.nombrePlantilla}
+                </Text>
+                <Text style={[styles.cardFecha, { color: subColor }]}>
                   Modificada:{" "}
                   {new Date(p.fechaModificacion).toLocaleDateString("es-HN")}
                 </Text>
@@ -162,9 +217,11 @@ export default function PlantillasScreen() {
                     <MaterialCommunityIcons
                       name="check-circle-outline"
                       size={22}
-                      color="#16a34a"
+                      color={badgeTextActive}
                     />
-                    <Text style={[styles.accionText, { color: "#16a34a" }]}>
+                    <Text
+                      style={[styles.accionText, { color: badgeTextActive }]}
+                    >
                       Activar
                     </Text>
                   </TouchableOpacity>
@@ -181,9 +238,9 @@ export default function PlantillasScreen() {
                   <MaterialCommunityIcons
                     name="pencil-outline"
                     size={22}
-                    color="#09528e"
+                    color={highlightCol}
                   />
-                  <Text style={[styles.accionText, { color: "#09528e" }]}>
+                  <Text style={[styles.accionText, { color: highlightCol }]}>
                     Editar
                   </Text>
                 </TouchableOpacity>
@@ -195,9 +252,9 @@ export default function PlantillasScreen() {
                     <MaterialCommunityIcons
                       name="delete-outline"
                       size={22}
-                      color="#dc2626"
+                      color={dangerCol}
                     />
-                    <Text style={[styles.accionText, { color: "#dc2626" }]}>
+                    <Text style={[styles.accionText, { color: dangerCol }]}>
                       Eliminar
                     </Text>
                   </TouchableOpacity>
@@ -211,8 +268,9 @@ export default function PlantillasScreen() {
   );
 }
 
+// Se remueven los colores estáticos que causaban conflictos
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1 },
   scroll: { padding: 20, paddingBottom: 60 },
   topRow: {
     flexDirection: "row",
@@ -220,31 +278,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  title: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  title: { fontSize: 22, fontWeight: "800" },
   nuevaBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#09528e",
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
   },
   nuevaBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  tabs: {
-    flexDirection: "row",
-    marginBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
+
+  tabsScroll: { marginBottom: 20 },
+  tabsContent: { gap: 6, paddingBottom: 4 },
+  tab: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  tab: { flex: 1, paddingVertical: 12, alignItems: "center" },
-  tabActivo: { borderBottomWidth: 3, borderBottomColor: "#09528e" },
-  tabText: { fontSize: 14, color: "#94a3b8", fontWeight: "600" },
-  tabTextActivo: { color: "#09528e" },
+  tabText: { fontSize: 13, fontWeight: "600" },
+
   empty: { alignItems: "center", paddingVertical: 60 },
-  emptyText: { fontSize: 14, color: "#94a3b8", marginTop: 12 },
+  emptyText: { fontSize: 14, marginTop: 12 },
+
   card: {
-    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -252,26 +310,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     elevation: 2,
-    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
     borderLeftWidth: 4,
-    borderLeftColor: "#e2e8f0",
   },
-  cardActiva: { borderLeftColor: "#09528e" },
   cardLeft: { flex: 1 },
   badge: {
-    backgroundColor: "#dcfce7",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     alignSelf: "flex-start",
     marginBottom: 6,
   },
-  badgeText: { fontSize: 11, fontWeight: "700", color: "#16a34a" },
-  cardNombre: { fontSize: 16, fontWeight: "700", color: "#1e293b" },
-  cardFecha: { fontSize: 12, color: "#94a3b8", marginTop: 4 },
+  badgeText: { fontSize: 11, fontWeight: "700" },
+  cardNombre: { fontSize: 16, fontWeight: "700" },
+  cardFecha: { fontSize: 12, marginTop: 4 },
   acciones: { flexDirection: "row", gap: 12 },
   accionBtn: { alignItems: "center", gap: 2 },
   accionText: { fontSize: 11, fontWeight: "600" },

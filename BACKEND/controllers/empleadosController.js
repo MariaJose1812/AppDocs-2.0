@@ -82,6 +82,8 @@ router.put("/empleados/:id/estado", async (req, res) => {
     res.json({ mensaje: "Estado actualizado" });
   } catch (error) {
     console.error("Error actualizando estado:", error);
+    console.log("ID recibido:", id);
+    console.log("Estado recibido:", estado);
     res.status(500).json({ error: "Error del servidor" });
   }
 });

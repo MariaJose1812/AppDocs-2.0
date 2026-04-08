@@ -9,9 +9,15 @@ import {
   Platform,
   FlatList,
   Modal,
+  ActivityIndicator,
+  StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
+//contexto y los colores
+import { useTheme } from "../hooks/themeContext";
+import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
@@ -43,6 +49,15 @@ const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
 function CatalogoModal({ visible, titulo, placeholder, onClose, onSave }) {
   const [valor, setValor] = useState("");
 
+  // Variables dinámicas para el Modal
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const surfaceBg = isDark ? "#1e293b" : "#ffffff";
+  const textColor = isDark ? "#f8fafc" : "#1e293b";
+  const borderCol = isDark ? "#334155" : "#e2e8f0";
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+  const highlightCol = isDark ? "#60a5fa" : "#09528e";
+
   const handleSave = () => {
     if (!valor.trim()) {
       mostrarAlerta("Atención", "El campo no puede estar vacío.");
@@ -60,26 +75,45 @@ function CatalogoModal({ visible, titulo, placeholder, onClose, onSave }) {
       onRequestClose={onClose}
     >
       <View style={mStyles.overlay}>
-        <View style={mStyles.box}>
-          <Text style={mStyles.titulo}>{titulo}</Text>
+        <View style={[mStyles.box, { backgroundColor: surfaceBg }]}>
+          <Text style={[mStyles.titulo, { color: textColor }]}>{titulo}</Text>
           <TextInput
-            style={mStyles.input}
+            style={[
+              mStyles.input,
+              {
+                backgroundColor: isDark ? "#0f172a" : "#f8fafc",
+                borderColor: borderCol,
+                color: textColor,
+              },
+            ]}
             placeholder={placeholder}
+            placeholderTextColor={subColor}
             value={valor}
             onChangeText={setValor}
             autoFocus
           />
           <View style={mStyles.row}>
             <TouchableOpacity
-              style={mStyles.btnCancelar}
+              style={[
+                mStyles.btnCancelar,
+                {
+                  borderColor: borderCol,
+                  backgroundColor: isDark ? "#0f172a" : "#ffffff",
+                },
+              ]}
               onPress={() => {
                 setValor("");
                 onClose();
               }}
             >
-              <Text style={mStyles.btnCancelarTxt}>Cancelar</Text>
+              <Text style={[mStyles.btnCancelarTxt, { color: subColor }]}>
+                Cancelar
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={mStyles.btnGuardar} onPress={handleSave}>
+            <TouchableOpacity
+              style={[mStyles.btnGuardar, { backgroundColor: highlightCol }]}
+              onPress={handleSave}
+            >
               <Text style={mStyles.btnGuardarTxt}>Guardar</Text>
             </TouchableOpacity>
           </View>
@@ -92,51 +126,40 @@ function CatalogoModal({ visible, titulo, placeholder, onClose, onSave }) {
 const mStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
   },
   box: {
-    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 24,
     width: "90%",
     maxWidth: 400,
     shadowColor: "#000",
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
   },
-  titulo: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 14,
-  },
+  titulo: { fontSize: 16, fontWeight: "700", marginBottom: 14 },
   input: {
-    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#1e293b",
     marginBottom: 18,
   },
   row: { flexDirection: "row", gap: 10 },
   btnCancelar: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     borderRadius: 8,
     paddingVertical: 11,
     alignItems: "center",
   },
-  btnCancelarTxt: { color: "#64748b", fontWeight: "700", fontSize: 14 },
+  btnCancelarTxt: { fontWeight: "700", fontSize: 14 },
   btnGuardar: {
     flex: 1,
-    backgroundColor: "#09528e",
     borderRadius: 8,
     paddingVertical: 11,
     alignItems: "center",
@@ -145,27 +168,45 @@ const mStyles = StyleSheet.create({
 });
 
 function Badge({ label }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const badgeBg = isDark ? "#334155" : "#e0f2fe";
+  const badgeTextCol = isDark ? "#60a5fa" : "#0369a1";
+
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: badgeBg }]}>
+      <Text style={[styles.badgeText, { color: badgeTextCol }]}>{label}</Text>
     </View>
   );
 }
 
-// LABEL + BOTON AGREGAR
+//LABEL + BOTÓN AGREGAR
 function CatalogoSeccion({ titulo, items, campoLabel, onAgregar }) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const textColor = isDark ? "#f8fafc" : "#1e293b";
+  const highlightCol = isDark ? "#60a5fa" : "#09528e";
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+
   return (
     <View style={styles.catalogoCol}>
       <View style={styles.catalogoHeader}>
-        <Text style={styles.catalogoLabel}>{titulo}</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={onAgregar}>
+        <Text style={[styles.catalogoLabel, { color: textColor }]}>
+          {titulo}
+        </Text>
+        <TouchableOpacity
+          style={[styles.addBtn, { backgroundColor: highlightCol }]}
+          onPress={onAgregar}
+        >
           <MaterialCommunityIcons name="plus" size={13} color="#fff" />
           <Text style={styles.addBtnTxt}>Agregar</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.badgesWrap}>
         {items.length === 0 ? (
-          <Text style={styles.emptyHint}>Sin registros</Text>
+          <Text style={[styles.emptyHint, { color: subColor }]}>
+            Sin registros
+          </Text>
         ) : (
           items.map((item, i) => <Badge key={i} label={item[campoLabel]} />)
         )}
@@ -191,6 +232,20 @@ export default function GestionEquiposScreen() {
   const [modalMarca, setModalMarca] = useState(false);
   const [modalModelo, setModalModelo] = useState(false);
 
+  // Variables de color globales de la pantalla
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  // Usamos el signo ? para evitar errores si Colors[theme] no carga a tiempo
+  const bg = Colors?.[theme]?.background || (isDark ? "#0f172a" : "#f8fafc");
+  const textColor = Colors?.[theme]?.text || (isDark ? "#f8fafc" : "#1e293b");
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+  const surfaceBg = isDark ? "#1e293b" : "#ffffff";
+  const borderCol = isDark ? "#334155" : "#e2e8f0";
+  const highlightCol = isDark ? "#60a5fa" : "#09528e";
+  const altRowBg = isDark ? "#0f172a" : "#f8fafc";
+  const badgeBg = isDark ? "#334155" : "#e0f2fe";
+
   //CARGA
   const cargarCatalogos = useCallback(async () => {
     try {
@@ -211,7 +266,6 @@ export default function GestionEquiposScreen() {
     setCargando(true);
     try {
       const res = await api.get("/equipos");
-      console.log("Datos de un equipo:", res.data[0]);
       setEquipos(res.data);
       setPagina(1);
     } catch (e) {
@@ -226,12 +280,10 @@ export default function GestionEquiposScreen() {
     cargarEquipos();
   }, []);
 
-  // Reset página al buscar
   useEffect(() => {
     setPagina(1);
   }, [busqueda, filtroOrigen]);
 
-  //CATÁLOGOS POST
   const agregarTipo = async (valor) => {
     try {
       await api.post("/catalogos/tiposEquipo", { tipo: valor });
@@ -273,22 +325,18 @@ export default function GestionEquiposScreen() {
 
   //PAGINACIÓN
   const equiposFiltrados = equipos.filter((eq) => {
-    // 1. Filtro de búsqueda por texto
     const q = busqueda.toLowerCase();
-    const coincideTexto = !busqueda.trim() || (
+    const coincideTexto =
+      !busqueda.trim() ||
       (eq.tipo || "").toLowerCase().includes(q) ||
       (eq.marca || "").toLowerCase().includes(q) ||
       (eq.modelo || "").toLowerCase().includes(q) ||
       (eq.serie || "").toLowerCase().includes(q) ||
       (eq.numFicha || "").toLowerCase().includes(q) ||
-      (eq.numInv || "").toLowerCase().includes(q)
-    );
+      (eq.numInv || "").toLowerCase().includes(q);
 
-    // 2. Filtro por origen (Botones)
-    const coincideOrigen = 
-      filtroOrigen === "Todos" || 
-      eq.origen === filtroOrigen;
-
+    const coincideOrigen =
+      filtroOrigen === "Todos" || eq.origen === filtroOrigen;
     return coincideTexto && coincideOrigen;
   });
 
@@ -305,17 +353,17 @@ export default function GestionEquiposScreen() {
     <View
       style={[
         styles.equipoRow,
-        index % 2 === 0 && { backgroundColor: "#f8fafc" },
+        index % 2 === 0 && { backgroundColor: altRowBg },
       ]}
     >
-      <View style={styles.equipoIconWrap}>
-        <MaterialCommunityIcons name="laptop" size={18} color="#09528e" />
+      <View style={[styles.equipoIconWrap, { backgroundColor: badgeBg }]}>
+        <MaterialCommunityIcons name="laptop" size={18} color={highlightCol} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.equipoTitulo}>
+        <Text style={[styles.equipoTitulo, { color: textColor }]}>
           {item.tipo} · {item.marca} {item.modelo}
         </Text>
-        <Text style={styles.equipoSub}>
+        <Text style={[styles.equipoSub, { color: subColor }]}>
           S/N: {item.serie || "N/A"}
           {"   "}Ficha: {item.numFicha || "N/A"}
           {"   "}Inv: {item.numInv || "N/A"}
@@ -325,20 +373,26 @@ export default function GestionEquiposScreen() {
   );
 
   const Paginacion = () => (
-    <View style={styles.paginacion}>
+    <View style={[styles.paginacion, { borderTopColor: borderCol }]}>
       <TouchableOpacity
-        style={[styles.pageBtn, pagina === 1 && styles.pageBtnDisabled]}
+        style={[
+          styles.pageBtn,
+          { backgroundColor: surfaceBg, borderColor: borderCol },
+          pagina === 1 && {
+            backgroundColor: isDark ? "transparent" : "#f8fafc",
+            opacity: 0.5,
+          },
+        ]}
         onPress={() => setPagina((p) => Math.max(1, p - 1))}
         disabled={pagina === 1}
       >
         <MaterialCommunityIcons
           name="chevron-left"
           size={18}
-          color={pagina === 1 ? "#cbd5e1" : "#09528e"}
+          color={pagina === 1 ? subColor : highlightCol}
         />
       </TouchableOpacity>
 
-      {/* Números de página */}
       {Array.from({ length: totalPaginas }, (_, i) => i + 1)
         .filter(
           (n) => n === 1 || n === totalPaginas || Math.abs(n - pagina) <= 1,
@@ -350,19 +404,30 @@ export default function GestionEquiposScreen() {
         }, [])
         .map((item, idx) =>
           item === "..." ? (
-            <Text key={`dots-${idx}`} style={styles.pageDots}>
+            <Text
+              key={`dots-${idx}`}
+              style={[styles.pageDots, { color: subColor }]}
+            >
               …
             </Text>
           ) : (
             <TouchableOpacity
               key={item}
-              style={[styles.pageBtn, pagina === item && styles.pageBtnActive]}
+              style={[
+                styles.pageBtn,
+                { backgroundColor: surfaceBg, borderColor: borderCol },
+                pagina === item && {
+                  backgroundColor: highlightCol,
+                  borderColor: highlightCol,
+                },
+              ]}
               onPress={() => setPagina(item)}
             >
               <Text
                 style={[
                   styles.pageBtnTxt,
-                  pagina === item && styles.pageBtnTxtActive,
+                  { color: subColor },
+                  pagina === item && { color: "#fff" },
                 ]}
               >
                 {item}
@@ -371,11 +436,14 @@ export default function GestionEquiposScreen() {
           ),
         )}
 
-      {/* Botón siguiente */}
       <TouchableOpacity
         style={[
           styles.pageBtn,
-          pagina === totalPaginas && styles.pageBtnDisabled,
+          { backgroundColor: surfaceBg, borderColor: borderCol },
+          pagina === totalPaginas && {
+            backgroundColor: isDark ? "transparent" : "#f8fafc",
+            opacity: 0.5,
+          },
         ]}
         onPress={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
         disabled={pagina === totalPaginas}
@@ -383,11 +451,11 @@ export default function GestionEquiposScreen() {
         <MaterialCommunityIcons
           name="chevron-right"
           size={18}
-          color={pagina === totalPaginas ? "#cbd5e1" : "#09528e"}
+          color={pagina === totalPaginas ? subColor : highlightCol}
         />
       </TouchableOpacity>
 
-      <Text style={styles.pageInfo}>
+      <Text style={[styles.pageInfo, { color: subColor }]}>
         {(pagina - 1) * ITEMS_POR_PAGINA + 1}–
         {Math.min(pagina * ITEMS_POR_PAGINA, equiposFiltrados.length)} de{" "}
         {equiposFiltrados.length}
@@ -396,7 +464,8 @@ export default function GestionEquiposScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <Header />
       <Navbar />
 
@@ -404,24 +473,36 @@ export default function GestionEquiposScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.mainTitle}>EQUIPOS</Text>
+        <View style={styles.titleContainer}>
+          <Text style={[styles.mainTitle, { color: textColor }]}>Equipos</Text>
+          <View style={[styles.titleLine, { backgroundColor: borderCol }]} />
+        </View>
 
         {/*CATÁLOGOS*/}
-        <View style={styles.card}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: surfaceBg,
+              shadowColor: isDark ? "#000" : "#94a3b8",
+            },
+          ]}
+        >
           <View style={styles.cardHeader}>
             <MaterialCommunityIcons
               name="tag-multiple-outline"
               size={17}
-              color="#09528e"
+              color={highlightCol}
             />
-            <Text style={styles.cardTitle}>Catálogos</Text>
+            <Text style={[styles.cardTitle, { color: textColor }]}>
+              Catálogos
+            </Text>
           </View>
-          <Text style={styles.hint}>
+          <Text style={[styles.hint, { color: subColor }]}>
             Estas opciones aparecen en los selectores al crear un acta de
             entrega.
           </Text>
 
-          {/* Tres columnas principales */}
           <View style={styles.catalogoGrid}>
             <CatalogoSeccion
               titulo="Tipo de equipo"
@@ -429,14 +510,18 @@ export default function GestionEquiposScreen() {
               campoLabel="tipo"
               onAgregar={() => setModalTipo(true)}
             />
-            <View style={styles.catalogoDivider} />
+            <View
+              style={[styles.catalogoDivider, { backgroundColor: borderCol }]}
+            />
             <CatalogoSeccion
               titulo="Marca"
               items={marcas}
               campoLabel="marca"
               onAgregar={() => setModalMarca(true)}
             />
-            <View style={styles.catalogoDivider} />
+            <View
+              style={[styles.catalogoDivider, { backgroundColor: borderCol }]}
+            />
             <CatalogoSeccion
               titulo="Modelo"
               items={modelos}
@@ -447,42 +532,63 @@ export default function GestionEquiposScreen() {
         </View>
 
         {/*EQUIPOS REGISTRADOS EN ACTAS*/}
-        <View style={styles.card}>
-          {/* Header con contador y refresh */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: surfaceBg,
+              shadowColor: isDark ? "#000" : "#94a3b8",
+            },
+          ]}
+        >
           <View style={styles.cardHeader}>
             <MaterialCommunityIcons
               name="monitor-multiple"
               size={17}
-              color="#09528e"
+              color={highlightCol}
             />
-            <Text style={styles.cardTitle}>Equipos registrados en actas</Text>
-            <View style={styles.contadorBadge}>
-              <Text style={styles.contadorTxt}>{equiposFiltrados.length}</Text>
+            <Text style={[styles.cardTitle, { color: textColor }]}>
+              Equipos registrados en actas
+            </Text>
+            <View style={[styles.contadorBadge, { backgroundColor: badgeBg }]}>
+              <Text style={[styles.contadorTxt, { color: highlightCol }]}>
+                {equiposFiltrados.length}
+              </Text>
             </View>
-            <TouchableOpacity style={styles.refreshBtn} onPress={cargarEquipos}>
+            <TouchableOpacity
+              style={[styles.refreshBtn, { backgroundColor: altRowBg }]}
+              onPress={cargarEquipos}
+            >
               <MaterialCommunityIcons
                 name="refresh"
                 size={17}
-                color="#09528e"
+                color={highlightCol}
               />
             </TouchableOpacity>
           </View>
 
           {/* Buscador */}
-          <View style={styles.searchWrap}>
-            <MaterialCommunityIcons name="magnify" size={16} color="#94a3b8" />
+          <View
+            style={[
+              styles.searchWrap,
+              { backgroundColor: altRowBg, borderColor: borderCol },
+            ]}
+          >
+            <MaterialCommunityIcons name="magnify" size={16} color={subColor} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: textColor }]}
               placeholder="Buscar por tipo, marca, modelo, serie..."
+              placeholderTextColor={subColor}
               value={busqueda}
               onChangeText={setBusqueda}
+              {...(Platform.OS === "web" ? { outlineStyle: "none" } : {})}
             />
             {busqueda.length > 0 && (
               <TouchableOpacity onPress={() => setBusqueda("")}>
                 <MaterialCommunityIcons
                   name="close-circle"
                   size={16}
-                  color="#94a3b8"
+                  color={subColor}
                 />
               </TouchableOpacity>
             )}
@@ -495,17 +601,22 @@ export default function GestionEquiposScreen() {
                 key={opcion}
                 style={[
                   styles.filtroBtn,
-                  filtroOrigen === opcion && styles.filtroBtnActive,
+                  { backgroundColor: altRowBg, borderColor: borderCol },
+                  filtroOrigen === opcion && {
+                    backgroundColor: highlightCol,
+                    borderColor: highlightCol,
+                  },
                 ]}
                 onPress={() => {
-                  setFiltroOrigen(opcion); 
-                  setPagina(1); 
+                  setFiltroOrigen(opcion);
+                  setPagina(1);
                 }}
               >
                 <Text
                   style={[
                     styles.filtroTxt,
-                    filtroOrigen === opcion && styles.filtroTxtActive,
+                    { color: subColor },
+                    filtroOrigen === opcion && { color: "#ffffff" },
                   ]}
                 >
                   {opcion}
@@ -517,16 +628,16 @@ export default function GestionEquiposScreen() {
           {/* Lista paginada */}
           {cargando ? (
             <View style={styles.centrado}>
-              <Text style={styles.emptyHint}>Cargando equipos...</Text>
+              <ActivityIndicator size="large" color={highlightCol} />
             </View>
           ) : equiposFiltrados.length === 0 ? (
             <View style={styles.centrado}>
               <MaterialCommunityIcons
                 name="laptop-off"
                 size={34}
-                color="#cbd5e1"
+                color={subColor}
               />
-              <Text style={styles.emptyHint}>
+              <Text style={[styles.emptyHint, { color: subColor }]}>
                 {busqueda
                   ? "Sin resultados para esa búsqueda."
                   : "Aún no hay equipos registrados."}
@@ -550,18 +661,21 @@ export default function GestionEquiposScreen() {
       <CatalogoModal
         visible={modalTipo}
         titulo="Agregar Tipo de Equipo"
+        placeholder="Ej: Teclado, Mouse..."
         onClose={() => setModalTipo(false)}
         onSave={agregarTipo}
       />
       <CatalogoModal
         visible={modalMarca}
         titulo="Agregar Marca"
+        placeholder="Ej: Dell, HP..."
         onClose={() => setModalMarca(false)}
         onSave={agregarMarca}
       />
       <CatalogoModal
         visible={modalModelo}
         titulo="Agregar Modelo"
+        placeholder="Ej: Latitude 5420..."
         onClose={() => setModalModelo(false)}
         onSave={agregarModelo}
       />
@@ -570,25 +684,33 @@ export default function GestionEquiposScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1 },
   scrollContent: { padding: 20, alignItems: "center", paddingBottom: 60 },
-
-  mainTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#1e293b",
-    marginBottom: 20,
-    alignSelf: "flex-start",
+  titleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 900,
+    marginBottom: 25,
+    marginTop: 10,
+    gap: 15,
   },
-
+  mainTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 2,
+  },
+  titleLine: {
+    flex: 1,
+    height: 1,
+    opacity: 0.6,
+  },
   card: {
-    backgroundColor: "#fff",
     padding: 20,
     borderRadius: 12,
     marginBottom: 20,
     width: "100%",
     maxWidth: 900,
-    shadowColor: "#94a3b8",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -600,37 +722,26 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 6,
   },
-  cardTitle: { fontSize: 15, fontWeight: "700", color: "#1e293b", flex: 1 },
-  hint: { fontSize: 12, color: "#94a3b8", marginBottom: 16 },
-
-  /* Catálogos */
-  catalogoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 0,
-  },
+  cardTitle: { fontSize: 15, fontWeight: "700", flex: 1 },
+  hint: { fontSize: 12, marginBottom: 16 },
+  catalogoGrid: { flexDirection: "row", flexWrap: "wrap", gap: 0 },
   catalogoCol: {
     flex: 1,
     minWidth: 180,
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  catalogoDivider: {
-    width: 1,
-    backgroundColor: "#e2e8f0",
-    marginVertical: 4,
-  },
+  catalogoDivider: { width: 1, marginVertical: 4 },
   catalogoHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginBottom: 10,
   },
-  catalogoLabel: { fontSize: 13, fontWeight: "700", color: "#1e293b" },
+  catalogoLabel: { fontSize: 13, fontWeight: "700" },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#09528e",
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -638,24 +749,11 @@ const styles = StyleSheet.create({
   },
   addBtnTxt: { color: "#fff", fontSize: 11, fontWeight: "700" },
   badgesWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  badge: {
-    backgroundColor: "#e0f2fe",
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: { fontSize: 12, color: "#0369a1", fontWeight: "600" },
-
-  /* Equipos */
-  contadorBadge: {
-    backgroundColor: "#e0f2fe",
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  contadorTxt: { fontSize: 12, color: "#0369a1", fontWeight: "700" },
+  badge: { borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  badgeText: { fontSize: 12, fontWeight: "600" },
+  contadorBadge: { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
+  contadorTxt: { fontSize: 12, fontWeight: "700" },
   refreshBtn: {
-    backgroundColor: "#f1f5f9",
     borderRadius: 8,
     width: 32,
     height: 32,
@@ -665,42 +763,22 @@ const styles = StyleSheet.create({
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     borderRadius: 8,
     paddingHorizontal: 12,
     height: 40,
     gap: 8,
     marginBottom: 12,
   },
-  searchInput: { flex: 1, fontSize: 13, color: "#1e293b" },
-  filtrosWrap: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
+  searchInput: { flex: 1, fontSize: 13 },
+  filtrosWrap: { flexDirection: "row", gap: 8, marginBottom: 16 },
   filtroBtn: {
-    backgroundColor: "#f1f5f9",
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
-  filtroBtnActive: {
-    backgroundColor: "#09528e",
-    borderColor: "#09528e",
-  },
-  filtroTxt: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  filtroTxtActive: {
-    color: "#ffffff",
-  },
-
+  filtroTxt: { fontSize: 12, fontWeight: "600" },
   equipoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -710,17 +788,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   equipoIconWrap: {
-    backgroundColor: "#e0f2fe",
     borderRadius: 8,
     width: 34,
     height: 34,
     justifyContent: "center",
     alignItems: "center",
   },
-  equipoTitulo: { fontSize: 13, fontWeight: "700", color: "#1e293b" },
-  equipoSub: { fontSize: 11, color: "#64748b", marginTop: 1 },
-
-  /* Paginación */
+  equipoTitulo: { fontSize: 13, fontWeight: "700" },
+  equipoSub: { fontSize: 11, marginTop: 1 },
   paginacion: {
     flexDirection: "row",
     alignItems: "center",
@@ -729,25 +804,20 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#f1f5f9",
     flexWrap: "wrap",
   },
   pageBtn: {
     minWidth: 32,
     height: 32,
     borderRadius: 6,
+    borderWidth: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f1f5f9",
     paddingHorizontal: 6,
   },
-  pageBtnActive: { backgroundColor: "#09528e" },
-  pageBtnDisabled: { backgroundColor: "#f8fafc" },
-  pageBtnTxt: { fontSize: 13, fontWeight: "600", color: "#475569" },
-  pageBtnTxtActive: { color: "#fff" },
-  pageDots: { fontSize: 13, color: "#94a3b8", paddingHorizontal: 4 },
-  pageInfo: { fontSize: 11, color: "#94a3b8", marginLeft: 8 },
-
+  pageBtnTxt: { fontSize: 13, fontWeight: "600" },
+  pageDots: { fontSize: 13, paddingHorizontal: 4 },
+  pageInfo: { fontSize: 11, marginLeft: 8 },
   centrado: { alignItems: "center", paddingVertical: 30, gap: 8 },
-  emptyHint: { fontSize: 13, color: "#94a3b8", textAlign: "center" },
+  emptyHint: { fontSize: 13, textAlign: "center" },
 });

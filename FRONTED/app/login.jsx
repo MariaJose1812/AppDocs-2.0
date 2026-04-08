@@ -1,34 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   Modal,
   TextInput,
-  Button,
+  TouchableOpacity, // Mejor para botones personalizados que 'Button'
   StyleSheet,
   ScrollView,
   Pressable,
-  Alert
-} from 'react-native';
-import Svg, { Defs, Rect, RadialGradient, Stop } from 'react-native-svg';
-import api from '../services/api';
-import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+  Alert,
+  Dimensions,
+} from "react-native";
+import Svg, { Defs, Rect, RadialGradient, Stop } from "react-native-svg";
+import api from "../services/api";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const { width } = Dimensions.get("window");
 
 export default function LoginScreen() {
   const router = useRouter();
 
   const [usuarios, setUsuarios] = useState([]);
   const [userSeleccionado, setUserSeleccionado] = useState(null);
-  const [pass, setPass] = useState('');
+  const [pass, setPass] = useState("");
   const [hoveredProfile, setHoveredProfile] = useState(null);
-
   const [modalCrearVisible, setModalCrearVisible] = useState(false);
+
   const [nuevoUsuario, setNuevoUsuario] = useState({
-    nomUsu: '',
-    corUsu: '',
-    cargoUsu: '',
-    conUsu: ''
+    nomUsu: "",
+    corUsu: "",
+    cargoUsu: "",
+    conUsu: "",
   });
 
   useEffect(() => {
@@ -37,286 +40,204 @@ export default function LoginScreen() {
 
   const cargarUsuarios = async () => {
     try {
-      const res = await api.get('/usuarios');
+      const res = await api.get("/usuarios");
       setUsuarios(res.data);
     } catch (err) {
-      console.log('Error cargando usuarios:', err.response?.data || err.message);
+      console.log("Error cargando usuarios:", err.message);
     }
   };
 
   const intentarLogin = async () => {
+    if (!pass) return Alert.alert("Error", "Ingresa la contraseña");
     try {
-      const res = await api.post('/auth/login', {
+      const res = await api.post("/auth/login", {
         idUsuarios: userSeleccionado.idUsuarios,
-        conUsu: pass
+        conUsu: pass,
       });
 
       if (res.data.token) {
-        await AsyncStorage.setItem('userToken', res.data.token);
-        await AsyncStorage.setItem('nomUsu', userSeleccionado.nomUsu);
-        await AsyncStorage.setItem('cargoUsu', userSeleccionado.cargoUsu);
+        await AsyncStorage.setItem("userToken", res.data.token);
+        await AsyncStorage.setItem("nomUsu", userSeleccionado.nomUsu);
+        await AsyncStorage.setItem("cargoUsu", userSeleccionado.cargoUsu);
+        await AsyncStorage.setItem("idUsuarios", userSeleccionado.idUsuarios.toString());
         setUserSeleccionado(null);
-        setPass('');
-        router.replace('/dashboard');
+        setPass("");
+        router.replace("/dashboard");
       }
     } catch (err) {
-      console.log('ERROR COMPLETO:', err.response?.data || err.message);
-      alert('Contraseña incorrecta o error de conexión');
+      Alert.alert("Error", "Contraseña incorrecta");
     }
   };
 
-  const abrirModalCrear = () => {
-    setNuevoUsuario({
-      nomUsu: '',
-      corUsu: '',
-      cargoUsu: '',
-      conUsu: ''
-    });
-    setModalCrearVisible(true);
-  };
-
   const guardarNuevoUsuario = async () => {
+    const { nomUsu, corUsu, cargoUsu, conUsu } = nuevoUsuario;
+    if (!nomUsu || !corUsu || !cargoUsu || !conUsu) {
+      return Alert.alert(
+        "Campos requeridos",
+        "Por favor, completa todos los campos.",
+      );
+    }
+
     try {
-      if (
-        !nuevoUsuario.nomUsu.trim() ||
-        !nuevoUsuario.corUsu.trim() ||
-        !nuevoUsuario.cargoUsu.trim() ||
-        !nuevoUsuario.conUsu.trim()
-      ) {
-        Alert.alert('Campos requeridos', 'Completa todos los campos.');
-        return;
-      }
-
-      const res = await api.post('/usuarios', nuevoUsuario);
-
-      const usuarioCreado = res.data;
-
-      setUsuarios((prev) => [...prev, usuarioCreado]);
-
+      await api.post("/usuarios", nuevoUsuario);
+      Alert.alert("Éxito", "Usuario creado correctamente");
       setModalCrearVisible(false);
-
-      setNuevoUsuario({
-        nomUsu: '',
-        corUsu: '',
-        cargoUsu: '',
-        conUsu: ''
-      });
-
-      if (usuarioCreado?.token) {
-        await AsyncStorage.setItem('userToken', usuarioCreado.token);
-      }
-
-      router.replace('/usuarios');
+      setNuevoUsuario({ nomUsu: "", corUsu: "", cargoUsu: "", conUsu: "" });
+      cargarUsuarios(); // Refrescamos la lista desde el servidor
     } catch (err) {
-      console.log('Error creando usuario:', err.response?.data || err.message);
       Alert.alert(
-        'Error',
-        'No se pudo crear el usuario.'
+        "Error",
+        "No se pudo registrar el usuario. El correo podría estar duplicado.",
       );
     }
   };
 
   return (
     <View style={styles.container}>
+      {/* Fondo Gradiente */}
       <View pointerEvents="none" style={styles.backgroundWrapper}>
-        <Svg width="100%" height="100%" style={styles.backgroundSvg}>
+        <Svg width="100%" height="100%">
           <Defs>
             <RadialGradient id="grad1" cx="12%" cy="18%" rx="35%" ry="35%">
               <Stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.30" />
-              <Stop offset="45%" stopColor="#0ea5e9" stopOpacity="0.14" />
-              <Stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
-            </RadialGradient>
-
-            <RadialGradient id="grad2" cx="88%" cy="82%" rx="35%" ry="35%">
-              <Stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.30" />
-              <Stop offset="45%" stopColor="#0ea5e9" stopOpacity="0.14" />
               <Stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
             </RadialGradient>
           </Defs>
-
           <Rect x="0" y="0" width="100%" height="100%" fill="#08142b" />
           <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad1)" />
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad2)" />
         </Svg>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>Selecciona tu Perfil</Text>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContainer}
-        >
-          <View style={styles.profilesRow}>
-            {usuarios.map((item) => {
-              const isHovered = hoveredProfile === item.idUsuarios;
-
-              return (
-                <Pressable
-                  key={item.idUsuarios}
-                  onPress={() => setUserSeleccionado(item)}
-                  onHoverIn={() => setHoveredProfile(item.idUsuarios)}
-                  onHoverOut={() => setHoveredProfile(null)}
-                  style={({ pressed }) => [
-                    styles.profileCard,
-                    isHovered && styles.profileCardHover,
-                    pressed && styles.profileCardPressed
-                  ]}
-                >
-                  <View style={[styles.avatar, isHovered && styles.avatarHover]}>
-                    <Text style={styles.avatarText}>
-                      {item.nomUsu?.charAt(0)?.toUpperCase() || '?'}
-                    </Text>
-                  </View>
-
-                  <Text style={[styles.name, isHovered && styles.nameHover]}>
-                    {item.nomUsu}
-                  </Text>
-
-                  <Text style={[styles.role, isHovered && styles.roleHover]}>
-                    {item.cargoUsu}
-                  </Text>
-                </Pressable>
-              );
-            })}
-
+        <View style={styles.profilesGrid}>
+          {usuarios.map((item) => (
             <Pressable
-              onPress={abrirModalCrear}
-              onHoverIn={() => setHoveredProfile('add')}
-              onHoverOut={() => setHoveredProfile(null)}
+              key={item.idUsuarios}
+              onPress={() => setUserSeleccionado(item)}
               style={({ pressed }) => [
-                styles.addProfileCard,
-                hoveredProfile === 'add' && styles.profileCardHover,
-                pressed && styles.profileCardPressed
+                styles.profileCard,
+                pressed && styles.profileCardPressed,
               ]}
             >
-              <View
-                style={[
-                  styles.addAvatar,
-                  hoveredProfile === 'add' && styles.addAvatarHover
-                ]}
-              >
-                <Text style={styles.addIcon}>+</Text>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {item.nomUsu?.charAt(0)?.toUpperCase()}
+                </Text>
               </View>
-
-              <Text
-                style={[
-                  styles.addText,
-                  hoveredProfile === 'add' && styles.nameHover
-                ]}
-              >
-                Agregar usuario
+              <Text style={styles.name} numberOfLines={1}>
+                {item.nomUsu}
+              </Text>
+              <Text style={styles.role} numberOfLines={1}>
+                {item.cargoUsu}
               </Text>
             </Pressable>
-          </View>
-        </ScrollView>
-      </View>
+          ))}
 
+          {/* Botón Agregar */}
+          <Pressable
+            onPress={() => setModalCrearVisible(true)}
+            style={({ pressed }) => [
+              styles.profileCard,
+              pressed && styles.profileCardPressed,
+            ]}
+          >
+            <View style={[styles.avatar, styles.addAvatar]}>
+              <Text style={styles.addIcon}>+</Text>
+            </View>
+            <Text style={styles.addText}>Agregar usuario</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+
+      {/* Modal Login */}
       <Modal visible={!!userSeleccionado} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>
-              Contraseña para {userSeleccionado?.nomUsu}
+              Hola, {userSeleccionado?.nomUsu}
             </Text>
-
             <TextInput
               secureTextEntry
               style={styles.input}
               value={pass}
               onChangeText={setPass}
-              placeholder="Ingrese su contraseña"
+              placeholder="Contraseña"
               placeholderTextColor="#999"
             />
-
-            <View style={styles.buttonsContainer}>
-              <View style={styles.buttonSpace}>
-                <Button title="Entrar" onPress={intentarLogin} />
-              </View>
-
-              <View style={styles.buttonSpace}>
-                <Button
-                  title="Cancelar"
-                  color="red"
-                  onPress={() => {
-                    setUserSeleccionado(null);
-                    setPass('');
-                  }}
-                />
-              </View>
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnMain]}
+                onPress={intentarLogin}
+              >
+                <Text style={styles.btnText}>Entrar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnCancel]}
+                onPress={() => {
+                  setUserSeleccionado(null);
+                  setPass("");
+                }}
+              >
+                <Text style={styles.btnText}>Cancelar</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={modalCrearVisible} transparent animationType="fade">
+      {/* Modal Crear Usuario */}
+      <Modal visible={modalCrearVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Crear nuevo usuario</Text>
-
+            <Text style={styles.modalTitle}>Nuevo Perfil</Text>
             <TextInput
               style={styles.input}
-              value={nuevoUsuario.nomUsu}
-              onChangeText={(text) =>
-                setNuevoUsuario((prev) => ({ ...prev, nomUsu: text }))
-              }
-              placeholder="Nombre usuario"
+              placeholder="Nombre"
               placeholderTextColor="#999"
+              onChangeText={(t) =>
+                setNuevoUsuario({ ...nuevoUsuario, nomUsu: t })
+              }
             />
-
             <TextInput
               style={styles.input}
-              value={nuevoUsuario.corUsu}
-              onChangeText={(text) =>
-                setNuevoUsuario((prev) => ({ ...prev, corUsu: text }))
-              }
-              placeholder="Correo usuario"
+              placeholder="Correo"
               placeholderTextColor="#999"
-              keyboardType="email-address"
-              autoCapitalize="none"
+              onChangeText={(t) =>
+                setNuevoUsuario({ ...nuevoUsuario, corUsu: t })
+              }
             />
-
             <TextInput
               style={styles.input}
-              value={nuevoUsuario.cargoUsu}
-              onChangeText={(text) =>
-                setNuevoUsuario((prev) => ({ ...prev, cargoUsu: text }))
-              }
-              placeholder="Cargo usuario"
+              placeholder="Cargo (Ej: IT)"
               placeholderTextColor="#999"
+              onChangeText={(t) =>
+                setNuevoUsuario({ ...nuevoUsuario, cargoUsu: t })
+              }
             />
-
             <TextInput
               style={styles.input}
-              value={nuevoUsuario.conUsu}
-              onChangeText={(text) =>
-                setNuevoUsuario((prev) => ({ ...prev, conUsu: text }))
-              }
-              placeholder="Contraseña usuario"
-              placeholderTextColor="#999"
               secureTextEntry
+              placeholder="Contraseña"
+              placeholderTextColor="#999"
+              onChangeText={(t) =>
+                setNuevoUsuario({ ...nuevoUsuario, conUsu: t })
+              }
             />
-
-            <View style={styles.buttonsContainer}>
-              <View style={styles.buttonSpace}>
-                <Button title="Guardar usuario" onPress={guardarNuevoUsuario} />
-              </View>
-
-              <View style={styles.buttonSpace}>
-                <Button
-                  title="Cancelar"
-                  color="red"
-                  onPress={() => {
-                    setModalCrearVisible(false);
-                    setNuevoUsuario({
-                      nomUsu: '',
-                      corUsu: '',
-                      cargoUsu: '',
-                      conUsu: ''
-                    });
-                  }}
-                />
-              </View>
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnMain]}
+                onPress={guardarNuevoUsuario}
+              >
+                <Text style={styles.btnText}>Guardar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnCancel]}
+                onPress={() => setModalCrearVisible(false)}
+              >
+                <Text style={styles.btnText}>Volver</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -326,188 +247,83 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#08142b',
-  },
+  container: { flex: 1, backgroundColor: "#08142b" },
+  backgroundWrapper: { ...StyleSheet.absoluteFillObject },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 40, alignItems: "center" },
+  title: { fontSize: 32, color: "#FFF", fontWeight: "bold", marginBottom: 40, textAlign: "center" },
 
-  backgroundWrapper: {
-    ...StyleSheet.absoluteFillObject,
+  // Grid Responsivo
+  profilesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 1000,
+    paddingHorizontal: 10,
+    gap: 30,
   },
-
-  backgroundSvg: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30,
-    paddingTop: 70,
-    paddingBottom: 40,
-    zIndex: 1,
-  },
-
-  title: {
-    fontSize: 34,
-    color: '#FFFFFF',
-    marginBottom: 60,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-
-  scrollContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-
-  profilesRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 28,
-  },
-
   profileCard: {
-    width: 170,
-    alignItems: 'center',
-    paddingVertical: 6,
-    cursor: 'pointer',
+    width: width > 600 ? 160 : width * 0.4, // Se adapta a tablets o móviles
+    alignItems: "center",
+    marginBottom: 20,
   },
-
-  profileCardHover: {
-    transform: [{ translateY: -8 }],
-  },
-
-  profileCardPressed: {
-    opacity: 0.9,
-  },
+  profileCardPressed: { opacity: 0.7, transform: [{ scale: 0.95 }] },
 
   avatar: {
-    width: 140,
-    height: 140,
-    borderRadius: 10,
-    backgroundColor: '#666666',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-    borderWidth: 3,
-    borderColor: 'transparent',
+    width: 120,
+    height: 120,
+    borderRadius: 15,
+    backgroundColor: "#334155",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.1)",
   },
+  avatarText: { fontSize: 40, color: "#FFF", fontWeight: "bold" },
+  addAvatar: { backgroundColor: "#1e293b", borderStyle: "dashed" },
+  addIcon: { fontSize: 50, color: "#0ea5e9" },
 
-  avatarHover: {
-    borderColor: '#FFFFFF',
-    transform: [{ scale: 1.06 }],
-  },
+  name: { color: "#FFF", fontSize: 16, fontWeight: "600" },
+  role: { color: "#64748b", fontSize: 13 },
+  addText: { color: "#0ea5e9", fontSize: 14, marginTop: 5 },
 
-  avatarText: {
-    fontSize: 46,
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-  },
-
-  name: {
-    fontSize: 16,
-    color: '#B3B3B3',
-    textAlign: 'center',
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-
-  nameHover: {
-    color: '#FFFFFF',
-  },
-
-  role: {
-    fontSize: 13,
-    color: '#8A8A8A',
-    textAlign: 'center',
-  },
-
-  roleHover: {
-    color: '#D1D5DB',
-  },
-
-  addProfileCard: {
-    width: 170,
-    alignItems: 'center',
-    paddingVertical: 6,
-    cursor: 'pointer',
-  },
-
-  addAvatar: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#8a8a8a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-
-  addAvatarHover: {
-    borderColor: '#FFFFFF',
-    transform: [{ scale: 1.06 }],
-  },
-
-  addIcon: {
-    fontSize: 68,
-    color: '#141414',
-    fontWeight: 'bold',
-    lineHeight: 72,
-  },
-
-  addText: {
-    fontSize: 16,
-    color: '#8A8A8A',
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-
+  // Modales
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-
   modalBox: {
-    width: 380,
-    backgroundColor: '#1f1f1f',
-    padding: 20,
-    borderRadius: 12,
+    width: "85%",
+    maxWidth: 400,
+    backgroundColor: "#1e293b",
+    padding: 25,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#334155",
   },
-
   modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    marginBottom: 10,
-    fontWeight: '600',
+    color: "#FFF",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
   },
-
   input: {
-    height: 45,
-    backgroundColor: '#2b2b2b',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    color: '#FFF',
-    marginVertical: 8,
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    padding: 15,
+    color: "#FFF",
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: "#334155",
   },
-
-  buttonsContainer: {
-    marginTop: 12,
-  },
-
-  buttonSpace: {
-    marginVertical: 5,
-  },
+  modalButtonsRow: { flexDirection: "column", gap: 10 },
+  btn: { padding: 15, borderRadius: 10, alignItems: "center" },
+  btnMain: { backgroundColor: "#0ea5e9" },
+  btnCancel: { backgroundColor: "transparent" },
+  btnText: { color: "#FFF", fontWeight: "bold", fontSize: 16 },
 });

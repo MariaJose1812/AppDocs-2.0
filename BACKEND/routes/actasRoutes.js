@@ -8,6 +8,7 @@ const memorandumController = require('../controllers/memorandumController');
 const oficiosController = require('../controllers/oficiosController');
 const reportesController = require('../controllers/reportesController');
 const catalogosController = require('../controllers/catalogosController');
+const upload = require('../middlewares/upload');
 
 const dashboardController = require('../controllers/dashboardController');
 
@@ -19,27 +20,26 @@ router.get('/procesadas/:tipo/:id', actasController.obtenerActaPorId);
 //Acta de Recepción
 router.post('/recepcion', recepcionController.recepcionActa);
 
-router.get('/recepcion/todos', recepcionController.obtenerActasRecepcion);
+router.get("/detalle/RECEPCION/:id", recepcionController.obtenerRecepcionPorId);
 
 //Pase de Salida
-router.post('/pase-salida', paseSalidaController.paseSalida);
-
-router.get('/pase-salida/todos', paseSalidaController.obtenerPaseSalida);
+router.post("/pase-salida",      paseSalidaController.paseSalida);
+router.get("/pase-salida",       paseSalidaController.obtenerPaseSalida);
+router.get("/pase-salida/:id",   paseSalidaController.obtenerPasePorId);
 
 //Memorandum
 router.post('/memorandum', memorandumController.crearMemorandum);
 
-router.get('/memorandum/todos', memorandumController.obtenerMemorandums);
+router.get("/memorandum/:id", memorandumController.obtenerMemorandumPorId);
 
 //Oficios
-router.post('/oficios', oficiosController.crearOficio);
-
-router.get('/oficios/todos', oficiosController.obtenerOficios);
+router.post("/oficios",      oficiosController.crearOficio);
+router.get("/oficios",       oficiosController.obtenerOficios);
+router.get("/oficios/:id",   oficiosController.obtenerOficioPorId);
 
 //Reporte
-router.post('/reporte', reportesController.generarReporte);
-
-router.get('/reportes/todos', reportesController.obtenerReportes);
+router.post('/reporte', upload.array('imagenes', 5), reportesController.crearReporte);
+router.get('/detalle/REPORTE/:id', reportesController.obtenerReportePorId);
 
 //Historial
 router.get('/historial', dashboardController.obtenerHistorial);

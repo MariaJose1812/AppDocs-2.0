@@ -8,12 +8,14 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
-  useWindowDimensions, // Para responsividad real
+  useWindowDimensions,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from "../hooks/themeContext";
+import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
@@ -21,13 +23,35 @@ import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
 export default function UsuariosScreen() {
-  const { width } = useWindowDimensions(); // Detecta ancho de pantalla
-  const isSmall = width < 400; // true si pantalla pequeña
+  const { width } = useWindowDimensions();
+  const isSmall = width < 400;
 
+  /* ── Tema ── */
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  const bg = Colors[theme].background;
+  const textColor = Colors[theme].text;
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+  const surfaceBg = isDark ? "#1e293b" : "#ffffff";
+  const surfaceBg2 = isDark ? "#2c3e50" : "#f1f5f9"; 
+  const borderCol = isDark ? "#334155" : "#e2e8f0";
+  const mutedCol = isDark ? "#475569" : "#cbd5e1";
+  const inputBg = isDark ? "#0f172a" : "#f1f5f9";
+  const inputBorder = isDark ? "#334155" : "#cbd5e1";
+  const avatarBg = isDark ? "#1e293b" : "#e0f2fe";
+  const avatarText = isDark ? "#60a5fa" : "#09528e";
+  const badgeBg = isDark ? "#334155" : "#e0f2fe";
+  const badgeText = isDark ? "#e2e8f0" : "#0369a1";
+  const deleteBg = isDark ? "#450a0a" : "#fef2f2";
+  const emptyBorder = isDark ? "#334155" : "#e2e8f0";
+  const iconBg = isDark ? "#1e293b" : "#f1f5f9";
+  const modalBg = isDark ? "#1e293b" : "#ffffff";
+  const overlayBg = isDark ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0.45)";
+
+  /* ── Estado ── */
   const [usuarios, setUsuarios] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [miCargo, setMiCargo] = useState("");
-  const [miNombre, setMiNombre] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [nuevoNom, setNuevoNom] = useState("");
@@ -39,19 +63,7 @@ export default function UsuariosScreen() {
 
   useEffect(() => {
     cargarUsuarios();
-    cargarDatosSesion();
   }, []);
-
-  const cargarDatosSesion = async () => {
-    try {
-      const cargo = await AsyncStorage.getItem("cargoUsuario");
-      const nombre = await AsyncStorage.getItem("nombreUsuario");
-      if (cargo) setMiCargo(cargo);
-      if (nombre) setMiNombre(nombre);
-    } catch (error) {
-      console.error("Error leyendo AsyncStorage:", error);
-    }
-  };
 
   const cargarUsuarios = async () => {
     try {
@@ -72,13 +84,12 @@ export default function UsuariosScreen() {
       return;
     }
     try {
-      const payload = {
+      await api.post("/usuarios", {
         nomUsu: nuevoNom,
         corUsu: nuevoCorreo,
         cargoUsu: nuevoCargo,
         conUsu: nuevoPass,
-      };
-      await api.post("/usuarios", payload);
+      });
       Alert.alert("Éxito", "Usuario creado correctamente.");
       setNuevoNom("");
       setNuevoCorreo("");
@@ -87,12 +98,9 @@ export default function UsuariosScreen() {
       setModalVisible(false);
       cargarUsuarios();
     } catch (error) {
-      console.error("Error al crear usuario:", error);
-      if (error.response && error.response.status === 409) {
+      if (error.response?.status === 409)
         Alert.alert("Error", "Este correo ya está registrado.");
-      } else {
-        Alert.alert("Error", "No se pudo crear el usuario.");
-      }
+      else Alert.alert("Error", "No se pudo crear el usuario.");
     }
   };
 
@@ -104,48 +112,73 @@ export default function UsuariosScreen() {
   const eliminarUsuario = async (id) => {
     try {
       await api.delete(`/usuarios/${id}`);
-      setUsuarios(usuarios.filter((usu) => usu.idUsuarios !== id));
-    } catch (error) {
-      console.error("Error al eliminar:", error);
+      setUsuarios(usuarios.filter((u) => u.idUsuarios !== id));
+    } catch {
       Alert.alert("Error", "No se pudo eliminar el usuario.");
     }
   };
 
-  const getInicial = (nombre) => {
-    return nombre ? nombre.charAt(0).toUpperCase() : "U";
-  };
+  const getInicial = (nombre) =>
+    nombre ? nombre.charAt(0).toUpperCase() : "U";
 
   const usuariosFiltrados = usuarios.filter((usu) => {
-    const textoBuscado = busqueda.toLowerCase();
+    const q = busqueda.toLowerCase();
     return (
-      (usu.nomUsu && usu.nomUsu.toLowerCase().includes(textoBuscado)) ||
-      (usu.corUsu && usu.corUsu.toLowerCase().includes(textoBuscado)) ||
-      (usu.cargoUsu && usu.cargoUsu.toLowerCase().includes(textoBuscado))
+      usu.nomUsu?.toLowerCase().includes(q) ||
+      usu.corUsu?.toLowerCase().includes(q) ||
+      usu.cargoUsu?.toLowerCase().includes(q)
     );
   });
 
+  /* ── Input reutilizable para el modal ── */
+  const ModalInput = ({ label, value, onChange, ...props }) => (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={[styles.label, { color: subColor }]}>{label}</Text>
+      <TextInput
+        style={[
+          styles.input,
+          {
+            backgroundColor: inputBg,
+            borderColor: inputBorder,
+            color: textColor,
+          },
+        ]}
+        value={value}
+        onChangeText={onChange}
+        placeholderTextColor={subColor}
+        {...props}
+      />
+    </View>
+  );
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
       <Header />
       <Navbar />
       <CustomScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.contentWidth}>
-          {/* HEADER ROW: se apila verticalmente en pantallas pequeñas */}
+          {/* HEADER */}
           <View style={[styles.headerRow, isSmall && styles.headerRowSmall]}>
-            <View style={styles.headerTextBlock}>
+            <View>
               <Text
-                style={[styles.mainTitle, isSmall && styles.mainTitleSmall]}
+                style={[
+                  styles.mainTitle,
+                  { color: textColor },
+                  isSmall && { fontSize: 20 },
+                ]}
               >
                 Usuarios
               </Text>
-              <Text style={styles.subTitle}>
+              <Text style={[styles.subTitle, { color: subColor }]}>
                 Administra los accesos al sistema
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.addBtn, isSmall && styles.addBtnSmall]}
+              style={[
+                styles.addBtn,
+                isSmall && { alignSelf: "stretch", justifyContent: "center" },
+              ]}
               onPress={() => setModalVisible(true)}
-              activeOpacity={0.8}
             >
               <MaterialCommunityIcons
                 name="account-plus-outline"
@@ -156,46 +189,62 @@ export default function UsuariosScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* BARRA DE BÚSQUEDA */}
-          <View style={styles.searchContainer}>
+          {/* BUSCADOR */}
+          <View
+            style={[
+              styles.searchContainer,
+              { backgroundColor: surfaceBg, borderColor: borderCol },
+            ]}
+          >
             <MaterialCommunityIcons
               name="magnify"
               size={22}
-              color="#94a3b8"
-              style={styles.searchIcon}
+              color={subColor}
+              style={{ marginRight: 8 }}
             />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: textColor }]}
               placeholder="Buscar por nombre, correo o cargo..."
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={subColor}
               value={busqueda}
               onChangeText={setBusqueda}
             />
             {busqueda.length > 0 && (
               <TouchableOpacity
                 onPress={() => setBusqueda("")}
-                style={styles.clearIcon}
+                style={{ padding: 6 }}
               >
                 <MaterialCommunityIcons
                   name="close-circle"
                   size={20}
-                  color="#cbd5e1"
+                  color={mutedCol}
                 />
               </TouchableOpacity>
             )}
           </View>
 
+          {/* LISTA */}
           {cargando ? (
             <ActivityIndicator
               size="large"
-              color="#2563eb"
+              color={isDark ? "#60a5fa" : "#09528e"}
               style={{ marginTop: 50 }}
             />
           ) : (
             <View style={styles.listContainer}>
               {usuariosFiltrados.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconContainer}>
+                <View
+                  style={[
+                    styles.emptyState,
+                    { backgroundColor: surfaceBg, borderColor: emptyBorder },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.emptyIconContainer,
+                      { backgroundColor: surfaceBg2 },
+                    ]}
+                  >
                     <MaterialCommunityIcons
                       name={
                         busqueda
@@ -203,13 +252,13 @@ export default function UsuariosScreen() {
                           : "account-group-outline"
                       }
                       size={48}
-                      color="#94a3b8"
+                      color={subColor}
                     />
                   </View>
-                  <Text style={styles.emptyStateTitle}>
+                  <Text style={[styles.emptyStateTitle, { color: textColor }]}>
                     {busqueda ? "No hay resultados" : "Sin usuarios"}
                   </Text>
-                  <Text style={styles.emptyStateText}>
+                  <Text style={[styles.emptyStateText, { color: subColor }]}>
                     {busqueda
                       ? `No encontramos a nadie que coincida con "${busqueda}".`
                       : "Aún no hay usuarios registrados. Comienza agregando uno nuevo."}
@@ -217,26 +266,44 @@ export default function UsuariosScreen() {
                 </View>
               ) : (
                 usuariosFiltrados.map((usu) => (
-                  <View key={usu.idUsuarios} style={styles.userCard}>
-                    {/* Avatar con tamaño fijo que no se comprime */}
-                    <View style={styles.avatarContainer}>
-                      <Text style={styles.avatarText}>
+                  <View
+                    key={usu.idUsuarios}
+                    style={[
+                      styles.userCard,
+                      { backgroundColor: surfaceBg, borderColor: borderCol },
+                    ]}
+                  >
+                    {/* Avatar */}
+                    <View
+                      style={[
+                        styles.avatarContainer,
+                        { backgroundColor: avatarBg, borderColor: borderCol },
+                      ]}
+                    >
+                      <Text style={[styles.avatarText, { color: avatarText }]}>
                         {getInicial(usu.nomUsu)}
                       </Text>
                     </View>
 
-                    {/* userInfo con flex:1 para que tome el espacio disponible */}
+                    {/* Info */}
                     <View style={styles.userInfo}>
                       <Text
-                        style={styles.userName}
+                        style={[styles.userName, { color: textColor }]}
                         numberOfLines={1}
-                        ellipsizeMode="tail"
                       >
                         {usu.nomUsu}
                       </Text>
-                      <View style={styles.badgeContainer}>
-                        <View style={styles.roleBadge}>
-                          <Text style={styles.roleBadgeText} numberOfLines={1}>
+                      <View style={{ flexDirection: "row", marginBottom: 5 }}>
+                        <View
+                          style={[
+                            styles.roleBadge,
+                            { backgroundColor: badgeBg },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.roleBadgeText, { color: badgeText }]}
+                            numberOfLines={1}
+                          >
                             {usu.cargoUsu}
                           </Text>
                         </View>
@@ -245,26 +312,24 @@ export default function UsuariosScreen() {
                         <MaterialCommunityIcons
                           name="email-outline"
                           size={14}
-                          color="#64748b"
+                          color={subColor}
                         />
                         <Text
-                          style={styles.emailText}
+                          style={[styles.emailText, { color: subColor }]}
                           numberOfLines={1}
-                          ellipsizeMode="tail"
                         >
                           {usu.corUsu}
                         </Text>
                       </View>
                     </View>
 
-                    {/* Botón eliminar con tamaño mínimo garantizado */}
+                    {/* Eliminar */}
                     <TouchableOpacity
-                      style={styles.deleteIcon}
+                      style={[styles.deleteIcon, { backgroundColor: deleteBg }]}
                       onPress={() =>
                         confirmarEliminacion(usu.idUsuarios, usu.nomUsu)
                       }
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} // Área de toque más grande
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons
                         name="trash-can-outline"
@@ -280,84 +345,78 @@ export default function UsuariosScreen() {
         </View>
       </CustomScrollView>
 
-      {/* MODAL PARA CREAR USUARIO */}
-      <Modal visible={modalVisible} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlay}>
-          {/* Modal con padding adaptado */}
+      {/* MODAL CREAR USUARIO */}
+      <Modal visible={modalVisible} animationType="fade" transparent>
+        <View style={[styles.modalOverlay, { backgroundColor: overlayBg }]}>
           <View
-            style={[styles.modalContent, { width: Math.min(width - 32, 450) }]}
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: modalBg,
+                borderColor: borderCol,
+                width: Math.min(width - 32, 450),
+              },
+            ]}
           >
             <View style={styles.modalHeader}>
-              <View style={styles.modalIconContainer}>
+              <View
+                style={[
+                  styles.modalIconContainer,
+                  { backgroundColor: isDark ? "#1e3a5f" : "#e0f2fe" },
+                ]}
+              >
                 <MaterialCommunityIcons
                   name="account-plus"
                   size={24}
-                  color="#2563eb"
+                  color={isDark ? "#60a5fa" : "#09528e"}
                 />
               </View>
-              <Text style={styles.modalTitle}>Crear Usuario</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                Crear Usuario
+              </Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Nombre Completo</Text>
-              <TextInput
-                style={styles.input}
-                value={nuevoNom}
-                onChangeText={setNuevoNom}
-                placeholder="Ej. Juan Pérez"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Correo Electrónico</Text>
-              <TextInput
-                style={styles.input}
-                value={nuevoCorreo}
-                onChangeText={setNuevoCorreo}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholder="ejemplo@empresa.com"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Cargo / Rol</Text>
-              <TextInput
-                style={styles.input}
-                value={nuevoCargo}
-                onChangeText={setNuevoCargo}
-                placeholder="Ej. Administrador"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Contraseña</Text>
-              <TextInput
-                style={styles.input}
-                value={nuevoPass}
-                onChangeText={setNuevoPass}
-                secureTextEntry
-                placeholder="••••••••"
-                placeholderTextColor="#94a3b8"
-              />
-            </View>
+            <ModalInput
+              label="Nombre Completo"
+              value={nuevoNom}
+              onChange={setNuevoNom}
+              placeholder="Ej. Juan Pérez"
+            />
+            <ModalInput
+              label="Correo Electrónico"
+              value={nuevoCorreo}
+              onChange={setNuevoCorreo}
+              placeholder="ejemplo@empresa.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <ModalInput
+              label="Cargo / Rol"
+              value={nuevoCargo}
+              onChange={setNuevoCargo}
+              placeholder="Ej. Administrador"
+            />
+            <ModalInput
+              label="Contraseña"
+              value={nuevoPass}
+              onChange={setNuevoPass}
+              placeholder="••••••••"
+              secureTextEntry
+            />
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.cancelBtn}
+                style={[
+                  styles.cancelBtn,
+                  { backgroundColor: surfaceBg2, borderColor: borderCol },
+                ]}
                 onPress={() => setModalVisible(false)}
-                activeOpacity={0.7}
               >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                <Text style={[styles.cancelBtnText, { color: textColor }]}>
+                  Cancelar
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={crearUsuario}
-                activeOpacity={0.7}
-              >
+              <TouchableOpacity style={styles.saveBtn} onPress={crearUsuario}>
                 <Text style={styles.saveBtnText}>Guardar</Text>
               </TouchableOpacity>
             </View>
@@ -365,21 +424,24 @@ export default function UsuariosScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
-      <Modal
-        visible={modalConfirmarVisible}
-        animationType="fade"
-        transparent={true}
-      >
-        <View style={styles.modalOverlay}>
+      {/* MODAL CONFIRMAR ELIMINACIÓN */}
+      <Modal visible={modalConfirmarVisible} animationType="fade" transparent>
+        <View style={[styles.modalOverlay, { backgroundColor: overlayBg }]}>
           <View
-            style={[styles.modalContent, { width: Math.min(width - 32, 450) }]}
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: modalBg,
+                borderColor: borderCol,
+                width: Math.min(width - 32, 450),
+              },
+            ]}
           >
             <View style={styles.modalHeader}>
               <View
                 style={[
                   styles.modalIconContainer,
-                  { backgroundColor: "#fef2f2" },
+                  { backgroundColor: isDark ? "#450a0a" : "#fef2f2" },
                 ]}
               >
                 <MaterialCommunityIcons
@@ -388,12 +450,14 @@ export default function UsuariosScreen() {
                   color="#ef4444"
                 />
               </View>
-              <Text style={styles.modalTitle}>¿Eliminar usuario?</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                ¿Eliminar usuario?
+              </Text>
             </View>
 
-            <Text style={styles.confirmText}>
+            <Text style={[styles.confirmText, { color: subColor }]}>
               Estás a punto de eliminar a{" "}
-              <Text style={{ fontWeight: "700", color: "#1e293b" }}>
+              <Text style={{ fontWeight: "700", color: textColor }}>
                 {usuarioSeleccionado?.nombre}
               </Text>
               . ¿Seguro que deseas continuar? Esta acción no se puede deshacer.
@@ -401,10 +465,15 @@ export default function UsuariosScreen() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.cancelBtn}
+                style={[
+                  styles.cancelBtn,
+                  { backgroundColor: surfaceBg2, borderColor: borderCol },
+                ]}
                 onPress={() => setModalConfirmarVisible(false)}
               >
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
+                <Text style={[styles.cancelBtnText, { color: textColor }]}>
+                  Cancelar
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.saveBtn, { backgroundColor: "#ef4444" }]}
@@ -424,141 +493,89 @@ export default function UsuariosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
-  scrollContent: { padding: 16, alignItems: "center", paddingBottom: 80 }, // padding reducido en móvil
+  container: { flex: 1 },
+  scrollContent: { padding: 16, alignItems: "center", paddingBottom: 80 },
   contentWidth: { width: "100%", maxWidth: 900 },
 
-  // headerRow: fila en pantallas grandes, columna en pequeñas
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 20,
-    flexWrap: "wrap", // permite que el botón baje si no hay espacio
+    flexWrap: "wrap",
     gap: 12,
   },
-  headerRowSmall: {
-    flexDirection: "column", // en pantallas muy pequeñas se apila
-    alignItems: "flex-start",
-  },
-  headerTextBlock: {
-    flexShrink: 1, // el texto se comprime antes que empuje el botón
-  },
-  mainTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
-  mainTitleSmall: { fontSize: 20 }, // título más pequeño en móviles chicos
-  subTitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  headerRowSmall: { flexDirection: "column", alignItems: "flex-start" },
+  mainTitle: { fontSize: 24, fontWeight: "800" },
+  subTitle: { fontSize: 13, marginTop: 2 },
 
   addBtn: {
     flexDirection: "row",
-    backgroundColor: "#2563eb",
+    backgroundColor: "#09528e",
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: 10,
     alignItems: "center",
-    shadowColor: "#2563eb",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    gap: 8,
   },
-  addBtnSmall: {
-    alignSelf: "stretch", // ocupa todo el ancho en pantallas pequeñas
-    justifyContent: "center",
-  },
-  addBtnText: { color: "#fff", fontWeight: "600", marginLeft: 8, fontSize: 14 },
+  addBtnText: { color: "#fff", fontWeight: "600", fontSize: 14 },
 
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
     borderRadius: 12,
     paddingHorizontal: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#64748b",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 1,
+    height: 50,
   },
-  searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
-    height: 48,
     fontSize: 14,
-    color: "#1e293b",
-    // outlineStyle solo en web para evitar warnings en nativo
     ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
   },
-  clearIcon: { padding: 6 },
 
   listContainer: { gap: 12 },
 
-  // userCard: layout fijo que no deja que el email se desborde
   userCard: {
-    backgroundColor: "#ffffff",
     padding: 14,
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#64748b",
-    shadowOffset: { width: 0, height: 3 },
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowRadius: 4,
     elevation: 2,
   },
-
   avatarContainer: {
     width: 44,
     height: 44,
-    minWidth: 44, // evita que el avatar se comprima
+    minWidth: 44,
     borderRadius: 22,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
     borderWidth: 1,
-    borderColor: "#dbeafe",
   },
-  avatarText: { fontSize: 17, fontWeight: "700", color: "#2563eb" },
-
-  userInfo: { flex: 1, justifyContent: "center", minWidth: 0 }, // minWidth:0 permite que flex:1 recorte texto
-  userName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 3,
-  },
-
-  badgeContainer: { flexDirection: "row", marginBottom: 5 },
+  avatarText: { fontSize: 17, fontWeight: "700" },
+  userInfo: { flex: 1, justifyContent: "center", minWidth: 0 },
+  userName: { fontSize: 15, fontWeight: "700", marginBottom: 3 },
   roleBadge: {
-    backgroundColor: "#f1f5f9",
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
-    maxWidth: "100%", // no desborda
+    maxWidth: "100%",
   },
-  roleBadgeText: { fontSize: 11, fontWeight: "600", color: "#475569" },
-
-  emailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 1,
-  },
-  emailText: {
-    fontSize: 13,
-    color: "#64748b",
-    marginLeft: 5,
-    flex: 1, // toma el espacio restante y corta con ellipsis
-  },
-
+  roleBadgeText: { fontSize: 11, fontWeight: "600" },
+  emailRow: { flexDirection: "row", alignItems: "center", marginTop: 1 },
+  emailText: { fontSize: 13, marginLeft: 5, flex: 1 },
   deleteIcon: {
     padding: 9,
-    backgroundColor: "#fef2f2",
     borderRadius: 10,
-    marginLeft: 8, // separación del contenido
-    minWidth: 40, // área de toque mínima
+    marginLeft: 8,
+    minWidth: 40,
     alignItems: "center",
   },
 
@@ -566,92 +583,66 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 50,
-    backgroundColor: "#fff",
     borderRadius: 16,
     borderStyle: "dashed",
     borderWidth: 2,
-    borderColor: "#e2e8f0",
   },
   emptyIconContainer: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: "#f8fafc",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 14,
   },
-  emptyStateTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginBottom: 8,
-  },
+  emptyStateTitle: { fontSize: 17, fontWeight: "700", marginBottom: 8 },
   emptyStateText: {
     fontSize: 13,
-    color: "#64748b",
     textAlign: "center",
     maxWidth: 240,
     lineHeight: 20,
   },
-  confirmText: {
-    fontSize: 15,
-    color: "#64748b",
-    lineHeight: 22,
-    marginBottom: 10,
-  },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16, // padding reducido para que el modal no se salga
+    padding: 16,
   },
   modalContent: {
-    // width se calcula dinámicamente arriba con Math.min(width - 32, 450)
-    backgroundColor: "#ffffff",
     borderRadius: 20,
     padding: 24,
+    borderWidth: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     elevation: 10,
   },
-
   modalHeader: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   modalIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a", flex: 1 }, // ✅ flex:1 para no desbordar
-
-  inputGroup: { marginBottom: 14 },
+  modalTitle: { fontSize: 20, fontWeight: "800", flex: 1 },
   label: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
     marginBottom: 7,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: "#f8fafc",
     borderWidth: 1,
-    borderColor: "#e2e8f0",
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#1e293b",
   },
-
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -659,26 +650,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cancelBtn: {
-    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     paddingVertical: 11,
     paddingHorizontal: 18,
     borderRadius: 10,
     alignItems: "center",
   },
-  cancelBtnText: { color: "#475569", fontSize: 14, fontWeight: "700" },
+  cancelBtnText: { fontSize: 14, fontWeight: "700" },
   saveBtn: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#09528e",
     paddingVertical: 11,
     paddingHorizontal: 22,
     borderRadius: 10,
     alignItems: "center",
-    shadowColor: "#2563eb",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
   },
   saveBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+  confirmText: { fontSize: 15, lineHeight: 22, marginBottom: 10 },
 });

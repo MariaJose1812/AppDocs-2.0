@@ -150,6 +150,7 @@ exports.procesarActa = async (req, res) => {
             idNuevoEncabezado,
             descripcionFinal,
             observacion || "",
+            item.asignado_a || "",
             idEquipoActual,
           ]);
 
@@ -163,7 +164,7 @@ exports.procesarActa = async (req, res) => {
         if (valoresDetalle.length > 0) {
           await connection.query(
             `INSERT INTO acta_retiro_detalle 
-                        (idActa_RetiroEnc, desc_ARDet, observa_ARDet, idEquipo) VALUES ?`,
+                        (idActa_RetiroEnc, desc_ARDet, observa_ARDet, asignado_a, idEquipo) VALUES ?`,
             [valoresDetalle],
           );
         }
@@ -313,7 +314,7 @@ exports.obtenerActaPorId = async (req, res) => {
 
       const [detData] = await connection.query(
         `SELECT d.idActa_RetiroDet, d.idEquipo, d.desc_ARDet,
-          d.observa_ARDet,
+          d.observa_ARDet, d.asignado_a,
           e.tipo, e.marca, e.modelo, e.serie, e.numFich, e.numInv
          FROM acta_retiro_detalle d
          LEFT JOIN equipo e ON d.idEquipo = e.idEquipo
@@ -323,6 +324,7 @@ exports.obtenerActaPorId = async (req, res) => {
       detalles = detData.map((d) => ({
         idEquipo: d.idEquipo,
         descripcion: d.desc_ARDet,
+        asignado_a: d.asignado_a,
         tipo: d.tipo || "",
         marca: d.marca || "",
         modelo: d.modelo || "",

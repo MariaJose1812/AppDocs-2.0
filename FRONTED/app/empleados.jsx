@@ -9,25 +9,128 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
-  useWindowDimensions, // Responsividad real
+  useWindowDimensions,
   Platform,
-  ScrollView, //Para hacer el modal scrolleable en pantallas pequeñas
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Picker } from "@react-native-picker/picker";
+import { useTheme } from "../hooks/themeContext";
+import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
+//Paletas de colores por tema
+const P = {
+  dark: {
+    bg: "#121212",
+    surface: "#1E1E1E",
+    surface2: "#2C2C2C",
+    surface3: "#0F172A",
+    border: "#333333",
+    border2: "#444444",
+    text: "#FFFFFF",
+    textMuted: "#A0A0A0",
+    textSub: "#E0E0E0",
+    accent: "#60A5FA",
+    pickerBg: "#2C2C2C",
+    pickerColor: "#FFFFFF",
+    tabInactive: "#A0A0A0",
+    cardBlocked: "#2C2C2C",
+    avatarBg: "#1E293B",
+    avatarBorder: "#334155",
+    searchBg: "#1E1E1E",
+    modalBg: "#1E1E1E",
+    switchTrackOff: "#444444",
+  },
+  light: {
+    bg: "#F4F6F9",
+    surface: "#FFFFFF",
+    surface2: "#F1F5F9",
+    surface3: "#EFF6FF",
+    border: "#E2E8F0",
+    border2: "#CBD5E1",
+    text: "#0F172A",
+    textMuted: "#64748B",
+    textSub: "#334155",
+    accent: "#2563EB",
+    pickerBg: "#F1F5F9",
+    pickerColor: "#0F172A",
+    tabInactive: "#64748B",
+    cardBlocked: "#F8FAFC",
+    avatarBg: "#EFF6FF",
+    avatarBorder: "#BFDBFE",
+    searchBg: "#FFFFFF",
+    modalBg: "#FFFFFF",
+    switchTrackOff: "#CBD5E1",
+  },
+};
+
+const ThemedInput = ({
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+  colors,
+}) => (
+  <TextInput
+    style={{
+      backgroundColor: colors.surface2,
+      borderWidth: 1,
+      borderColor: colors.border2,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 15,
+      color: colors.text,
+    }}
+    value={value}
+    onChangeText={onChangeText}
+    placeholder={placeholder}
+    placeholderTextColor={colors.textMuted}
+    keyboardType={keyboardType}
+    autoCapitalize={autoCapitalize}
+  />
+);
+
+const ThemedPicker = ({ selectedValue, onValueChange, children, colors }) => (
+  <View
+    style={{
+      backgroundColor: colors.pickerBg,
+      borderWidth: 1,
+      borderColor: colors.border2,
+      borderRadius: 10,
+      overflow: "hidden",
+    }}
+  >
+    <Picker
+      selectedValue={selectedValue}
+      onValueChange={onValueChange}
+      style={{
+        height: 50,
+        width: "100%",
+        color: colors.pickerColor,
+        backgroundColor: colors.pickerBg,
+      }}
+      dropdownIconColor={colors.textMuted}
+    >
+      {children}
+    </Picker>
+  </View>
+);
+
 export default function EmpleadosReceptoresScreen() {
-  const { width, height } = useWindowDimensions(); 
-  const isSmall = width < 400; 
+  const { theme } = useTheme();
+  const c = P[theme] ?? P.light;
+  const { width, height } = useWindowDimensions();
+  const isSmall = width < 400;
 
   const [tipoActivo, setTipoActivo] = useState("empleados");
-
   const [empleados, setEmpleados] = useState([]);
   const [receptores, setReceptores] = useState([]);
   const [oficinasLista, setOficinasLista] = useState([]);
@@ -41,7 +144,6 @@ export default function EmpleadosReceptoresScreen() {
   const [empOficinaId, setEmpOficinaId] = useState("");
   const [empUnidad, setEmpUnidad] = useState("");
   const [empCargoId, setEmpCargoId] = useState("");
-  const [empCargo, setEmpCargo] = useState("");
 
   const [recNom, setRecNom] = useState("");
   const [recCorreo, setRecCorreo] = useState("");
@@ -63,39 +165,30 @@ export default function EmpleadosReceptoresScreen() {
   useEffect(() => {
     cargarDatos();
   }, []);
-
   useEffect(() => {
     setEmpUnidad("");
     setEmpCargoId("");
-    setEmpCargo("");
   }, [empOficinaId]);
-
   useEffect(() => {
     setEmpCargoId("");
-    setEmpCargo("");
   }, [empUnidad]);
 
   const cargarDatos = async () => {
     try {
       setCargando(true);
-      const [resEmpleados, resReceptores, resOficinas] = await Promise.all([
+      const [resEmp, resRec, resOfi] = await Promise.all([
         api.get("/empleados"),
         api.get("/receptores"),
         api.get("/catalogos/oficinas"),
       ]);
-      const empData = resEmpleados.data.map((e) => ({
-        ...e,
-        estado: e.estEmp || e.estado || "Activo",
-      }));
-      const recData = resReceptores.data.map((r) => ({
-        ...r,
-        estado: r.estRec || r.estado || "Activo",
-      }));
-      setEmpleados(empData);
-      setReceptores(recData);
-      setOficinasLista(resOficinas.data);
-    } catch (error) {
-      console.error("Error al cargar datos:", error);
+      setEmpleados(
+        resEmp.data.map((e) => ({ ...e, estado: e.estado || "Activo" })),
+      );
+      setReceptores(
+        resRec.data.map((r) => ({ ...r, estado: r.estRec || "Activo" })),
+      );
+      setOficinasLista(resOfi.data);
+    } catch {
       Alert.alert("Error", "No se pudieron cargar los registros.");
     } finally {
       setCargando(false);
@@ -113,14 +206,12 @@ export default function EmpleadosReceptoresScreen() {
         if (empCargoId) {
           idOficinaFinal = parseInt(empCargoId);
         } else {
-          const oficinaSeleccionada = oficinasLista.find(
-            (o) => o.nomOficina === empOficinaId,
-          );
-          if (!oficinaSeleccionada) {
-            Alert.alert("Error", "No se encontró la oficina seleccionada.");
+          const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
+          if (!ofi) {
+            Alert.alert("Error", "No se encontró la oficina.");
             return;
           }
-          idOficinaFinal = oficinaSeleccionada.idOficina;
+          idOficinaFinal = ofi.idOficina;
         }
         await api.post("/empleados", {
           nomEmp: empNom,
@@ -131,10 +222,7 @@ export default function EmpleadosReceptoresScreen() {
         Alert.alert("Éxito", "Empleado creado correctamente.");
       } else {
         if (!recNom || !recCorreo || !recEmpresa || !recCargo) {
-          Alert.alert(
-            "Atención",
-            "Todos los campos del receptor son obligatorios.",
-          );
+          Alert.alert("Atención", "Todos los campos son obligatorios.");
           return;
         }
         await api.post("/receptores", {
@@ -149,7 +237,6 @@ export default function EmpleadosReceptoresScreen() {
       setModalVisible(false);
       cargarDatos();
     } catch (error) {
-      console.error("Error al crear:", error);
       if (error.response?.status === 409)
         Alert.alert("Error", "Este correo ya está registrado.");
       else Alert.alert("Error", "No se pudo crear el registro.");
@@ -163,7 +250,6 @@ export default function EmpleadosReceptoresScreen() {
     setEmpOficinaId("");
     setEmpUnidad("");
     setEmpCargoId("");
-    setEmpCargo("");
     setRecNom("");
     setRecCorreo("");
     setRecEmpresa("");
@@ -186,22 +272,22 @@ export default function EmpleadosReceptoresScreen() {
         ? `/empleados/${id}/estado`
         : `/receptores/${id}/estado`;
     try {
+      console.log("Enviando:", { id, tipo, estado: nuevoEstado });
       await api.put(endpoint, { estado: nuevoEstado });
-      if (tipo === "empleado") {
+      if (tipo === "empleado")
         setEmpleados(
           empleados.map((e) =>
             e.idEmpleados === id ? { ...e, estado: nuevoEstado } : e,
           ),
         );
-      } else {
+      else
         setReceptores(
           receptores.map((r) =>
             r.idReceptores === id ? { ...r, estado: nuevoEstado } : r,
           ),
         );
-      }
     } catch {
-      Alert.alert("Error", "No se pudo cambiar el estado en la base de datos.");
+      Alert.alert("Error", "No se pudo cambiar el estado.");
     }
   };
 
@@ -222,7 +308,7 @@ export default function EmpleadosReceptoresScreen() {
       setNuevaOfUnidad("");
       setNuevaOfCargo("");
       setMostrarNuevaOficina(false);
-      Alert.alert("Éxito", "Oficina creada correctamente.");
+      Alert.alert("Éxito", "Oficina creada.");
     } catch {
       Alert.alert("Error", "No se pudo crear la oficina.");
     }
@@ -233,13 +319,11 @@ export default function EmpleadosReceptoresScreen() {
       Alert.alert("Atención", "Unidad y cargo son obligatorios.");
       return;
     }
-    const oficinaActual = oficinasLista.find(
-      (o) => o.nomOficina === empOficinaId,
-    );
-    if (!oficinaActual) return;
+    const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
+    if (!ofi) return;
     try {
       const res = await api.post("/catalogos/oficinas", {
-        nomOficina: oficinaActual.nomOficina,
+        nomOficina: ofi.nomOficina,
         unidad: nuevaUnidad,
         cargoOfi: nuevaUnidadCargo,
       });
@@ -248,7 +332,7 @@ export default function EmpleadosReceptoresScreen() {
       setNuevaUnidad("");
       setNuevaUnidadCargo("");
       setMostrarNuevaUnidad(false);
-      Alert.alert("Éxito", "Unidad creada correctamente.");
+      Alert.alert("Éxito", "Unidad creada.");
     } catch {
       Alert.alert("Error", "No se pudo crear la unidad.");
     }
@@ -259,13 +343,11 @@ export default function EmpleadosReceptoresScreen() {
       Alert.alert("Atención", "El nombre del cargo es obligatorio.");
       return;
     }
-    const oficinaActual = oficinasLista.find(
-      (o) => o.nomOficina === empOficinaId,
-    );
-    if (!oficinaActual) return;
+    const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
+    if (!ofi) return;
     try {
       const res = await api.post("/catalogos/oficinas", {
-        nomOficina: oficinaActual.nomOficina,
+        nomOficina: ofi.nomOficina,
         unidad: empUnidad,
         cargoOfi: nuevoCargo,
       });
@@ -273,15 +355,13 @@ export default function EmpleadosReceptoresScreen() {
       setEmpCargoId(String(res.data.idOficina));
       setNuevoCargo("");
       setMostrarNuevoCargo(false);
-      Alert.alert("Éxito", "Cargo creado correctamente.");
+      Alert.alert("Éxito", "Cargo creado.");
     } catch {
       Alert.alert("Error", "No se pudo crear el cargo.");
     }
   };
 
-  const getInicial = (nombre) =>
-    nombre ? nombre.charAt(0).toUpperCase() : "?";
-
+  const getInicial = (n) => (n ? n.charAt(0).toUpperCase() : "?");
   const oficinasUnicas = [
     ...new Map(oficinasLista.map((o) => [o.nomOficina, o])).values(),
   ];
@@ -305,30 +385,40 @@ export default function EmpleadosReceptoresScreen() {
   const datosFiltrados = (
     tipoActivo === "empleados" ? empleados : receptores
   ).filter((item) => {
-    const texto = busqueda.toLowerCase();
+    const txt = busqueda.toLowerCase();
     return (
-      (item.nomEmp || item.nomRec || "").toLowerCase().includes(texto) ||
-      (item.corEmp || item.corRec || "").toLowerCase().includes(texto) ||
-      (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(texto) ||
-      (item.nomOficina || "").toLowerCase().includes(texto)
+      (item.nomEmp || item.nomRec || "").toLowerCase().includes(txt) ||
+      (item.corEmp || item.corRec || "").toLowerCase().includes(txt) ||
+      (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(txt) ||
+      (item.nomOficina || "").toLowerCase().includes(txt)
     );
   });
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <Header />
       <Navbar />
-      <CustomScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.contentWidth}>
-          {/* ENCABEZADO: se apila en pantallas pequeñas */}
+      <CustomScrollView
+        contentContainerStyle={{
+          padding: 16,
+          alignItems: "center",
+          paddingBottom: 80,
+        }}
+      >
+        <View style={{ width: "100%", maxWidth: 900 }}>
+          {/* Header row */}
           <View style={[styles.headerRow, isSmall && styles.headerRowSmall]}>
-            <View style={styles.headerTextBlock}>
+            <View style={{ flexShrink: 1 }}>
               <Text
-                style={[styles.mainTitle, isSmall && styles.mainTitleSmall]}
+                style={[
+                  styles.mainTitle,
+                  { color: c.text },
+                  isSmall && { fontSize: 20 },
+                ]}
               >
                 Directorio
               </Text>
-              <Text style={styles.subTitle}>
+              <Text style={[styles.subTitle, { color: c.textMuted }]}>
                 Administra empleados y receptores
               </Text>
             </View>
@@ -338,7 +428,6 @@ export default function EmpleadosReceptoresScreen() {
                 limpiarFormularios();
                 setModalVisible(true);
               }}
-              activeOpacity={0.8}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
               <Text style={styles.addBtnText}>
@@ -349,8 +438,8 @@ export default function EmpleadosReceptoresScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* TABS */}
-          <View style={styles.tabContainer}>
+          {/* Tabs */}
+          <View style={[styles.tabContainer, { backgroundColor: c.surface }]}>
             {["empleados", "receptores"].map((tab) => (
               <TouchableOpacity
                 key={tab}
@@ -366,14 +455,14 @@ export default function EmpleadosReceptoresScreen() {
                       ? "badge-account-horizontal-outline"
                       : "truck-delivery-outline"
                   }
-                  size={isSmall ? 17 : 20} 
-                  color={tipoActivo === tab ? "#fff" : "#64748b"}
+                  size={isSmall ? 17 : 20}
+                  color={tipoActivo === tab ? "#fff" : c.tabInactive}
                 />
                 <Text
                   style={[
                     styles.tabText,
-                    tipoActivo === tab && styles.tabTextActive,
-                    isSmall && styles.tabTextSmall,
+                    { color: tipoActivo === tab ? "#fff" : c.tabInactive },
+                    isSmall && { fontSize: 13 },
                   ]}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -382,219 +471,261 @@ export default function EmpleadosReceptoresScreen() {
             ))}
           </View>
 
-          {/* BÚSQUEDA */}
-          <View style={styles.searchContainer}>
+          {/* Búsqueda */}
+          <View
+            style={[
+              styles.searchContainer,
+              { backgroundColor: c.searchBg, borderColor: c.border },
+            ]}
+          >
             <MaterialCommunityIcons
               name="magnify"
               size={22}
-              color="#94a3b8"
-              style={styles.searchIcon}
+              color={c.textMuted}
+              style={{ marginRight: 8 }}
             />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: c.text }]}
               placeholder={`Buscar ${tipoActivo}...`}
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={c.textMuted}
               value={busqueda}
               onChangeText={setBusqueda}
             />
             {busqueda.length > 0 && (
               <TouchableOpacity
                 onPress={() => setBusqueda("")}
-                style={styles.clearIcon}
+                style={{ padding: 6 }}
               >
                 <MaterialCommunityIcons
                   name="close-circle"
                   size={20}
-                  color="#cbd5e1"
+                  color={c.textMuted}
                 />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* LISTA */}
+          {/* Lista */}
           {cargando ? (
             <ActivityIndicator
               size="large"
-              color="#2563eb"
+              color="#09528e"
               style={{ marginTop: 50 }}
             />
+          ) : datosFiltrados.length === 0 ? (
+            <View
+              style={[
+                styles.emptyState,
+                { backgroundColor: c.surface, borderColor: c.border },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="card-search-outline"
+                size={48}
+                color={c.textMuted}
+              />
+              <Text style={[styles.emptyStateTitle, { color: c.text }]}>
+                Sin resultados
+              </Text>
+            </View>
           ) : (
-            <View style={styles.listContainer}>
-              {datosFiltrados.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <MaterialCommunityIcons
-                    name="card-search-outline"
-                    size={48}
-                    color="#94a3b8"
-                  />
-                  <Text style={styles.emptyStateTitle}>Sin resultados</Text>
-                </View>
-              ) : (
-                datosFiltrados.map((item) => {
-                  const id = item.idEmpleados || item.idReceptores;
-                  const nombre = item.nomEmp || item.nomRec;
-                  const correo = item.corEmp || item.corRec;
-                  const cargo = item.cargoEmp || item.cargoRec;
-                  const empresa = item.emprRec || "Interno";
-                  const isActivo = item.estado === "Activo";
-                  const oficinaTag = item.nomOficina;
+            <View style={{ gap: 12 }}>
+              {datosFiltrados.map((item) => {
+                const id = item.idEmpleados || item.idReceptores;
+                const nombre = item.nomEmp || item.nomRec;
+                const correo = item.corEmp || item.corRec;
+                const cargo = item.cargoEmp || item.cargoRec;
+                const empresa = item.emprRec || "Interno";
+                const isActivo = item.estado === "Activo";
 
-                  return (
+                return (
+                  <View
+                    key={id}
+                    style={[
+                      styles.userCard,
+                      {
+                        backgroundColor: isActivo ? c.surface : c.cardBlocked,
+                        borderColor: c.border,
+                      },
+                      !isActivo && { opacity: 0.65 },
+                    ]}
+                  >
                     <View
-                      key={id}
                       style={[
-                        styles.userCard,
-                        !isActivo && styles.cardBloqueada,
+                        styles.avatarContainer,
+                        {
+                          backgroundColor: c.avatarBg,
+                          borderColor: isActivo ? c.avatarBorder : c.border2,
+                        },
                       ]}
                     >
-                      <View
+                      <Text
                         style={[
-                          styles.avatarContainer,
-                          !isActivo && {
-                            borderColor: "#cbd5e1",
-                            backgroundColor: "#f1f5f9",
-                          },
+                          styles.avatarText,
+                          { color: c.accent },
+                          !isActivo && { color: c.textMuted },
                         ]}
                       >
+                        {getInicial(nombre)}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={{ flex: 1, justifyContent: "center", minWidth: 0 }}
+                    >
+                      <View style={styles.nameRow}>
                         <Text
                           style={[
-                            styles.avatarText,
-                            !isActivo && { color: "#94a3b8" },
+                            styles.userName,
+                            { color: c.text },
+                            !isActivo && { color: c.textMuted },
                           ]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
                         >
-                          {getInicial(nombre)}
+                          {nombre}
                         </Text>
+                        {!isActivo && (
+                          <View style={styles.badgeInactivo}>
+                            <Text style={styles.badgeInactivoText}>
+                              Bloqueado
+                            </Text>
+                          </View>
+                        )}
                       </View>
 
-                      <View style={styles.userInfo}>
-                        <View style={styles.nameRow}>
-                          <Text
+                      <View style={styles.badgeContainer}>
+                        {cargo ? (
+                          <View
                             style={[
-                              styles.userName,
-                              !isActivo && { color: "#64748b" },
+                              styles.roleBadge,
+                              { backgroundColor: c.surface2 },
                             ]}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
                           >
-                            {nombre}
-                          </Text>
-                          {!isActivo && (
-                            <View style={styles.badgeInactivo}>
-                              <Text style={styles.badgeInactivoText}>
-                                Bloqueado
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.badgeContainer}>
-                          {cargo ? (
-                            <View style={styles.roleBadge}>
-                              <Text
-                                style={styles.roleBadgeText}
-                                numberOfLines={1}
-                              >
-                                {cargo}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {tipoActivo === "receptores" && (
-                            <View
+                            <Text
                               style={[
-                                styles.roleBadge,
-                                { backgroundColor: "#e0e7ff" },
+                                styles.roleBadgeText,
+                                { color: c.textSub },
                               ]}
+                              numberOfLines={1}
                             >
-                              <Text
-                                style={[
-                                  styles.roleBadgeText,
-                                  { color: "#4338ca" },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {empresa}
-                              </Text>
-                            </View>
-                          )}
-                          {tipoActivo === "empleados" && oficinaTag && (
-                            <View
-                              style={[
-                                styles.roleBadge,
-                                { backgroundColor: "#fef3c7" },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.roleBadgeText,
-                                  { color: "#d97706" },
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {oficinaTag}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.emailRow}>
-                          <MaterialCommunityIcons
-                            name="email-outline"
-                            size={13}
-                            color="#64748b"
-                          />
-                          <Text
-                            style={styles.emailText}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
+                              {cargo}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {tipoActivo === "receptores" && (
+                          <View
+                            style={[
+                              styles.roleBadge,
+                              { backgroundColor: c.surface3 },
+                            ]}
                           >
-                            {correo}
-                          </Text>
-                        </View>
+                            <Text
+                              style={[
+                                styles.roleBadgeText,
+                                { color: c.accent },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {empresa}
+                            </Text>
+                          </View>
+                        )}
+                        {tipoActivo === "empleados" && item.nomOficina && (
+                          <View
+                            style={[
+                              styles.roleBadge,
+                              { backgroundColor: "#78350f22" },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.roleBadgeText,
+                                { color: "#D97706" },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {item.nomOficina}
+                            </Text>
+                          </View>
+                        )}
                       </View>
 
-
-                      <View style={styles.switchContainer}>
-                        <Text style={styles.switchLabel}>
-                          {isActivo ? "Activo" : "Inactivo"}
-                        </Text>
-                        <Switch
-                          value={isActivo}
-                          onValueChange={() =>
-                            toggleEstado(
-                              id,
-                              tipoActivo === "empleados"
-                                ? "empleado"
-                                : "receptor",
-                              item.estado,
-                            )
-                          }
-                          trackColor={{ false: "#cbd5e1", true: "#bfdbfe" }}
-                          thumbColor={isActivo ? "#2563eb" : "#f8fafc"}
+                      <View
+                        style={{ flexDirection: "row", alignItems: "center" }}
+                      >
+                        <MaterialCommunityIcons
+                          name="email-outline"
+                          size={13}
+                          color={c.textMuted}
                         />
+                        <Text
+                          style={[styles.emailText, { color: c.textMuted }]}
+                          numberOfLines={1}
+                        >
+                          {correo}
+                        </Text>
                       </View>
                     </View>
-                  );
-                })
-              )}
+
+                    <View
+                      style={{
+                        alignItems: "center",
+                        marginLeft: 8,
+                        minWidth: 56,
+                      }}
+                    >
+                      <Text
+                        style={[styles.switchLabel, { color: c.textMuted }]}
+                      >
+                        {isActivo ? "Activo" : "Inactivo"}
+                      </Text>
+                      <Switch
+                        value={isActivo}
+                        onValueChange={() =>
+                          toggleEstado(
+                            id,
+                            tipoActivo === "empleados"
+                              ? "empleado"
+                              : "receptor",
+                            item.estado,
+                          )
+                        }
+                        trackColor={{
+                          false: c.switchTrackOff,
+                          true: "#1E3A5F",
+                        }}
+                        thumbColor={isActivo ? "#3b82f6" : c.textMuted}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
       </CustomScrollView>
 
-      {/*MODAL CON SCROLLVIEW INTERNO para formularios largos */}
-      <Modal visible={modalVisible} animationType="fade" transparent={true}>
+      {/*MODAL*/}
+      <Modal visible={modalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View
             style={[
               styles.modalContent,
               {
+                backgroundColor: c.modalBg,
                 width: Math.min(width - 32, 500),
                 maxHeight: height * 0.88,
               },
             ]}
           >
             <View style={styles.modalHeader}>
-              <View style={styles.modalIconContainer}>
+              <View
+                style={[
+                  styles.modalIconContainer,
+                  { backgroundColor: c.avatarBg },
+                ]}
+              >
                 <MaterialCommunityIcons
                   name={
                     tipoActivo === "empleados"
@@ -602,61 +733,66 @@ export default function EmpleadosReceptoresScreen() {
                       : "truck-delivery"
                   }
                   size={24}
-                  color="#2563eb"
+                  color={c.accent}
                 />
               </View>
-              <Text style={styles.modalTitle}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>
                 Crear {tipoActivo === "empleados" ? "Empleado" : "Receptor"}
               </Text>
             </View>
 
-            {/* Contenido del formulario scrolleable */}
             <ScrollView
               showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled" 
+              keyboardShouldPersistTaps="handled"
             >
               {tipoActivo === "empleados" ? (
                 <>
+                  {/* Nombre */}
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Nombre Completo</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Nombre Completo
+                    </Text>
+                    <ThemedInput
                       value={empNom}
                       onChangeText={setEmpNom}
                       placeholder="Ej. Pablo Díaz"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
-
+                  {/* DNI */}
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>DNI</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      DNI
+                    </Text>
+                    <ThemedInput
                       value={empDni}
                       onChangeText={setEmpDni}
                       placeholder="0000-0000-00000"
                       keyboardType="numeric"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
-
+                  {/* Correo */}
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Correo Electrónico</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Correo Electrónico
+                    </Text>
+                    <ThemedInput
                       value={empCorreo}
                       onChangeText={setEmpCorreo}
-                      keyboardType="email-address"
                       placeholder="correo@ejemplo.com"
+                      keyboardType="email-address"
                       autoCapitalize="none"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
 
-                  {/* OFICINA */}
+                  {/* Oficina */}
                   <View style={styles.inputGroup}>
                     <View style={styles.labelRow}>
-                      <Text style={styles.label}>Oficina</Text>
+                      <Text style={[styles.label, { color: c.textMuted }]}>
+                        Oficina
+                      </Text>
                       <TouchableOpacity
                         onPress={() => {
                           setMostrarNuevaOficina(!mostrarNuevaOficina);
@@ -671,57 +807,65 @@ export default function EmpleadosReceptoresScreen() {
                               : "plus-circle-outline"
                           }
                           size={20}
-                          color="#2563eb"
+                          color={c.accent}
                         />
                       </TouchableOpacity>
                     </View>
-                    <View style={styles.pickerContainer}>
-                      <Picker
-                        selectedValue={empOficinaId}
-                        onValueChange={(v) => setEmpOficinaId(v)}
-                        style={styles.picker}
-                      >
+                    <ThemedPicker
+                      selectedValue={empOficinaId}
+                      onValueChange={setEmpOficinaId}
+                      colors={c}
+                    >
+                      <Picker.Item
+                        label="Seleccione una oficina..."
+                        value=""
+                        color={c.textMuted}
+                      />
+                      {oficinasUnicas.map((ofi) => (
                         <Picker.Item
-                          label="Seleccione una oficina..."
-                          value=""
-                          color="#94a3b8"
+                          key={ofi.nomOficina}
+                          label={ofi.nomOficina}
+                          value={ofi.nomOficina}
+                          color={c.pickerColor}
                         />
-                        {oficinasUnicas.map((ofi) => (
-                          <Picker.Item
-                            key={ofi.nomOficina}
-                            label={ofi.nomOficina}
-                            value={ofi.nomOficina}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
+                      ))}
+                    </ThemedPicker>
                   </View>
 
                   {mostrarNuevaOficina && (
-                    <View style={styles.inlineForm}>
-                      <Text style={styles.inlineFormTitle}>Nueva Oficina</Text>
-                      <TextInput
-                        style={styles.input}
+                    <View
+                      style={[
+                        styles.inlineForm,
+                        {
+                          backgroundColor: c.surface3,
+                          borderColor: c.avatarBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.inlineFormTitle, { color: c.accent }]}
+                      >
+                        Nueva Oficina
+                      </Text>
+                      <ThemedInput
                         value={nuevaOfNom}
                         onChangeText={setNuevaOfNom}
                         placeholder="Nombre de la oficina"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <View style={{ height: 8 }} />
-                      <TextInput
-                        style={styles.input}
+                      <ThemedInput
                         value={nuevaOfUnidad}
                         onChangeText={setNuevaOfUnidad}
                         placeholder="Unidad"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <View style={{ height: 8 }} />
-                      <TextInput
-                        style={styles.input}
+                      <ThemedInput
                         value={nuevaOfCargo}
                         onChangeText={setNuevaOfCargo}
                         placeholder="Cargo"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <TouchableOpacity
                         style={styles.inlineBtn}
@@ -734,11 +878,13 @@ export default function EmpleadosReceptoresScreen() {
                     </View>
                   )}
 
-                  {/* UNIDAD */}
+                  {/* Unidad */}
                   {empOficinaId !== "" && (
                     <View style={styles.inputGroup}>
                       <View style={styles.labelRow}>
-                        <Text style={styles.label}>Unidad</Text>
+                        <Text style={[styles.label, { color: c.textMuted }]}>
+                          Unidad
+                        </Text>
                         <TouchableOpacity
                           onPress={() => {
                             setMostrarNuevaUnidad(!mostrarNuevaUnidad);
@@ -753,50 +899,59 @@ export default function EmpleadosReceptoresScreen() {
                                 : "plus-circle-outline"
                             }
                             size={20}
-                            color="#2563eb"
+                            color={c.accent}
                           />
                         </TouchableOpacity>
                       </View>
-                      <View style={styles.pickerContainer}>
-                        <Picker
-                          selectedValue={empUnidad}
-                          onValueChange={(v) => setEmpUnidad(v)}
-                          style={styles.picker}
-                        >
+                      <ThemedPicker
+                        selectedValue={empUnidad}
+                        onValueChange={setEmpUnidad}
+                        colors={c}
+                      >
+                        <Picker.Item
+                          label="Seleccione una unidad..."
+                          value=""
+                          color={c.textMuted}
+                        />
+                        {unidadesDeLaOficina.map((u) => (
                           <Picker.Item
-                            label="Seleccione una unidad..."
-                            value=""
-                            color="#94a3b8"
+                            key={u}
+                            label={u}
+                            value={u}
+                            color={c.pickerColor}
                           />
-                          {unidadesDeLaOficina.map((unidad) => (
-                            <Picker.Item
-                              key={unidad}
-                              label={unidad}
-                              value={unidad}
-                            />
-                          ))}
-                        </Picker>
-                      </View>
+                        ))}
+                      </ThemedPicker>
                     </View>
                   )}
 
                   {mostrarNuevaUnidad && empOficinaId !== "" && (
-                    <View style={styles.inlineForm}>
-                      <Text style={styles.inlineFormTitle}>Nueva Unidad</Text>
-                      <TextInput
-                        style={styles.input}
+                    <View
+                      style={[
+                        styles.inlineForm,
+                        {
+                          backgroundColor: c.surface3,
+                          borderColor: c.avatarBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.inlineFormTitle, { color: c.accent }]}
+                      >
+                        Nueva Unidad
+                      </Text>
+                      <ThemedInput
                         value={nuevaUnidad}
                         onChangeText={setNuevaUnidad}
                         placeholder="Nombre de la unidad"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <View style={{ height: 8 }} />
-                      <TextInput
-                        style={styles.input}
+                      <ThemedInput
                         value={nuevaUnidadCargo}
                         onChangeText={setNuevaUnidadCargo}
                         placeholder="Cargo de esta unidad"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <TouchableOpacity
                         style={styles.inlineBtn}
@@ -807,11 +962,13 @@ export default function EmpleadosReceptoresScreen() {
                     </View>
                   )}
 
-                  {/* CARGO */}
+                  {/* Cargo */}
                   {empUnidad !== "" && (
                     <View style={styles.inputGroup}>
                       <View style={styles.labelRow}>
-                        <Text style={styles.label}>Cargo</Text>
+                        <Text style={[styles.label, { color: c.textMuted }]}>
+                          Cargo
+                        </Text>
                         <TouchableOpacity
                           onPress={() => {
                             setMostrarNuevoCargo(!mostrarNuevoCargo);
@@ -826,42 +983,52 @@ export default function EmpleadosReceptoresScreen() {
                                 : "plus-circle-outline"
                             }
                             size={20}
-                            color="#2563eb"
+                            color={c.accent}
                           />
                         </TouchableOpacity>
                       </View>
-                      <View style={styles.pickerContainer}>
-                        <Picker
-                          selectedValue={empCargoId}
-                          onValueChange={(v) => setEmpCargoId(v)}
-                          style={styles.picker}
-                        >
+                      <ThemedPicker
+                        selectedValue={empCargoId}
+                        onValueChange={setEmpCargoId}
+                        colors={c}
+                      >
+                        <Picker.Item
+                          label="Seleccione un cargo..."
+                          value=""
+                          color={c.textMuted}
+                        />
+                        {cargosDeLaUnidad.map((fila) => (
                           <Picker.Item
-                            label="Seleccione un cargo..."
-                            value=""
-                            color="#94a3b8"
+                            key={fila.idOficina}
+                            label={fila.cargoOfi}
+                            value={String(fila.idOficina)}
+                            color={c.pickerColor}
                           />
-                          {cargosDeLaUnidad.map((fila) => (
-                            <Picker.Item
-                              key={fila.idOficina}
-                              label={fila.cargoOfi}
-                              value={String(fila.idOficina)}
-                            />
-                          ))}
-                        </Picker>
-                      </View>
+                        ))}
+                      </ThemedPicker>
                     </View>
                   )}
 
                   {mostrarNuevoCargo && empUnidad !== "" && (
-                    <View style={styles.inlineForm}>
-                      <Text style={styles.inlineFormTitle}>Nuevo Cargo</Text>
-                      <TextInput
-                        style={styles.input}
+                    <View
+                      style={[
+                        styles.inlineForm,
+                        {
+                          backgroundColor: c.surface3,
+                          borderColor: c.avatarBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.inlineFormTitle, { color: c.accent }]}
+                      >
+                        Nuevo Cargo
+                      </Text>
+                      <ThemedInput
                         value={nuevoCargo}
                         onChangeText={setNuevoCargo}
                         placeholder="Nuevo cargo"
-                        placeholderTextColor="#94a3b8"
+                        colors={c}
                       />
                       <TouchableOpacity
                         style={styles.inlineBtn}
@@ -875,45 +1042,49 @@ export default function EmpleadosReceptoresScreen() {
               ) : (
                 <>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Nombre Completo</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Nombre Completo
+                    </Text>
+                    <ThemedInput
                       value={recNom}
                       onChangeText={setRecNom}
                       placeholder="Ej. Carlos Mendoza"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Correo Electrónico</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Correo Electrónico
+                    </Text>
+                    <ThemedInput
                       value={recCorreo}
                       onChangeText={setRecCorreo}
-                      keyboardType="email-address"
                       placeholder="correo@ejemplo.com"
+                      keyboardType="email-address"
                       autoCapitalize="none"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Empresa</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Empresa
+                    </Text>
+                    <ThemedInput
                       value={recEmpresa}
                       onChangeText={setRecEmpresa}
                       placeholder="Ej. Tech Solutions S.A."
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Cargo</Text>
-                    <TextInput
-                      style={styles.input}
+                    <Text style={[styles.label, { color: c.textMuted }]}>
+                      Cargo
+                    </Text>
+                    <ThemedInput
                       value={recCargo}
                       onChangeText={setRecCargo}
                       placeholder="Ej. Técnico de Soporte"
-                      placeholderTextColor="#94a3b8"
+                      colors={c}
                     />
                   </View>
                 </>
@@ -921,10 +1092,15 @@ export default function EmpleadosReceptoresScreen() {
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
-                  style={styles.cancelBtn}
+                  style={[
+                    styles.cancelBtn,
+                    { backgroundColor: c.surface2, borderColor: c.border2 },
+                  ]}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.cancelBtnText}>Cancelar</Text>
+                  <Text style={[styles.cancelBtnText, { color: c.textSub }]}>
+                    Cancelar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.saveBtn}
@@ -942,10 +1118,6 @@ export default function EmpleadosReceptoresScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f1f5f9" },
-  scrollContent: { padding: 16, alignItems: "center", paddingBottom: 80 },
-  contentWidth: { width: "100%", maxWidth: 900 },
-
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -954,33 +1126,28 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
-  headerRowSmall: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  headerTextBlock: { flexShrink: 1 },
-  mainTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
-  mainTitleSmall: { fontSize: 20 },
-  subTitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  headerRowSmall: { flexDirection: "column", alignItems: "flex-start" },
+  mainTitle: { fontSize: 24, fontWeight: "800" },
+  subTitle: { fontSize: 13, marginTop: 2 },
 
   addBtn: {
     flexDirection: "row",
-    backgroundColor: "#2563eb",
+    backgroundColor: "#09528e",
     paddingHorizontal: 14,
     paddingVertical: 11,
     borderRadius: 10,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     elevation: 4,
   },
-  addBtnSmall: {
-    alignSelf: "stretch",
-    justifyContent: "center",
-  },
+  addBtnSmall: { alignSelf: "stretch", justifyContent: "center" },
   addBtnText: { color: "#fff", fontWeight: "600", marginLeft: 8, fontSize: 14 },
 
   tabContainer: {
     flexDirection: "row",
-    backgroundColor: "#e2e8f0",
     borderRadius: 12,
     padding: 4,
     marginBottom: 18,
@@ -994,92 +1161,61 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 6,
   },
-  tabActive: {
-    backgroundColor: "#2563eb",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#64748b" },
-  tabTextActive: { color: "#ffffff" },
-  tabTextSmall: { fontSize: 13 },
+  tabActive: { backgroundColor: "#09528e", elevation: 2 },
+  tabText: { fontSize: 14, fontWeight: "600" },
 
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
     borderRadius: 12,
     paddingHorizontal: 12,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
   },
-  searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
     height: 48,
     fontSize: 14,
-    color: "#1e293b",
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}), // ✅ Solo en web
+    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
   },
-  clearIcon: { padding: 6 },
 
-  listContainer: { gap: 12 },
-
-  // Tarjeta con layout que no desborda
   userCard: {
-    backgroundColor: "#ffffff",
     padding: 14,
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#64748b",
+    borderWidth: 1,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
     elevation: 2,
   },
-  cardBloqueada: { opacity: 0.6, backgroundColor: "#f8fafc" },
-
   avatarContainer: {
     width: 44,
     height: 44,
-    minWidth: 44, 
+    minWidth: 44,
     borderRadius: 22,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
     borderWidth: 1,
-    borderColor: "#dbeafe",
   },
-  avatarText: { fontSize: 17, fontWeight: "700", color: "#2563eb" },
-
-  userInfo: { flex: 1, justifyContent: "center", minWidth: 0 }, 
-
+  avatarText: { fontSize: 17, fontWeight: "700" },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginBottom: 3,
   },
-  userName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1e293b",
-    flexShrink: 1, // Se comprime antes de empujar el badge
-  },
+  userName: { fontSize: 15, fontWeight: "700", flexShrink: 1 },
   badgeInactivo: {
-    backgroundColor: "#fee2e2",
+    backgroundColor: "#450a0a",
     paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 4,
   },
   badgeInactivoText: { fontSize: 9, color: "#ef4444", fontWeight: "bold" },
-
-  // Badges con flexWrap para bajar si no caben
   badgeContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1087,65 +1223,36 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   roleBadge: {
-    backgroundColor: "#f1f5f9",
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
-    maxWidth: 140, 
+    maxWidth: 140,
   },
-  roleBadgeText: { fontSize: 11, fontWeight: "600", color: "#475569" },
-
-  emailRow: { flexDirection: "row", alignItems: "center" },
-  emailText: {
-    fontSize: 13,
-    color: "#64748b",
-    marginLeft: 5,
-    flex: 1, 
-  },
-
-  switchContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-    minWidth: 56,
-  },
-  switchLabel: {
-    fontSize: 10,
-    color: "#64748b",
-    marginBottom: 3,
-    fontWeight: "600",
-  },
-
+  roleBadgeText: { fontSize: 11, fontWeight: "600" },
+  emailText: { fontSize: 13, marginLeft: 5, flex: 1 },
+  switchLabel: { fontSize: 10, marginBottom: 3, fontWeight: "600" },
   emptyState: {
     alignItems: "center",
     paddingVertical: 50,
-    backgroundColor: "#fff",
     borderRadius: 16,
     borderStyle: "dashed",
     borderWidth: 2,
-    borderColor: "#e2e8f0",
   },
-  emptyStateTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#1e293b",
-    marginTop: 10,
-  },
+  emptyStateTitle: { fontSize: 17, fontWeight: "700", marginTop: 10 },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
   },
   modalContent: {
-    backgroundColor: "#ffffff",
     borderRadius: 20,
     padding: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.4,
     shadowRadius: 20,
     elevation: 10,
   },
@@ -1154,12 +1261,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: "#eff6ff",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a", flex: 1 }, 
+  modalTitle: { fontSize: 20, fontWeight: "800", flex: 1 },
 
   inputGroup: { marginBottom: 14 },
   labelRow: {
@@ -1171,34 +1277,8 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#475569",
     textTransform: "uppercase",
     letterSpacing: 0.4,
-  },
-  input: {
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: "#1e293b",
-  },
-
-  pickerContainer: {
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  picker: {
-    height: 50,
-    width: "100%",
-    color: "#1e293b",
-    backgroundColor: "transparent",
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}), // Solo en web
   },
 
   modalButtons: {
@@ -1209,26 +1289,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cancelBtn: {
-    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     paddingVertical: 11,
     paddingHorizontal: 18,
     borderRadius: 10,
   },
-  cancelBtnText: { color: "#475569", fontSize: 14, fontWeight: "700" },
+  cancelBtnText: { fontSize: 14, fontWeight: "700" },
   saveBtn: {
-    backgroundColor: "#2563eb",
+    backgroundColor: "#09528e",
     paddingVertical: 11,
     paddingHorizontal: 22,
     borderRadius: 10,
+    elevation: 3,
   },
-  saveBtnText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+  saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 
   inlineForm: {
-    backgroundColor: "#f0f9ff",
     borderWidth: 1,
-    borderColor: "#bae6fd",
     borderRadius: 12,
     padding: 14,
     marginBottom: 14,
@@ -1237,7 +1314,6 @@ const styles = StyleSheet.create({
   inlineFormTitle: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#0369a1",
     marginBottom: 10,
     textTransform: "uppercase",
   },

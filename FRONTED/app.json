@@ -20,7 +20,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.mariajose1812.FRONTED",
-      "usesCleartextTraffic": true 
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static",
@@ -40,7 +40,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-mail-composer"
     ],
     "experiments": {
       "typedRoutes": true,

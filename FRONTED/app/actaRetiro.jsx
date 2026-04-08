@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,11 +17,124 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { useTheme } from "../hooks/themeContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
+
+//Paleta de colores por tema
+const P = {
+  dark: {
+    bg: "#121212",
+    surface: "#1E1E1E",
+    surface2: "#2C2C2C",
+    border: "#333333",
+    border2: "#444444",
+    text: "#FFFFFF",
+    textMuted: "#A0A0A0",
+    textSub: "#E0E0E0",
+    accent: "#60A5FA",
+    pickerBg: "#2C2C2C",
+    pickerColor: "#FFFFFF",
+    inputBg: "#2C2C2C",
+    inputBorder: "#444444",
+    cardShadow: "#000",
+    toggleBg: "#1E293B",
+    toggleInactive: "#A0A0A0",
+    danger: "#ef4444",
+  },
+  light: {
+    bg: "#F8FAFC",
+    surface: "#FFFFFF",
+    surface2: "#F1F5F9",
+    border: "#E2E8F0",
+    border2: "#CBD5E1",
+    text: "#0F172A",
+    textMuted: "#64748B",
+    textSub: "#334155",
+    accent: "#09528E",
+    pickerBg: "#F1F5F9",
+    pickerColor: "#0F172A",
+    inputBg: "#F1F5F9",
+    inputBorder: "#CBD5E1",
+    cardShadow: "#94A3B8",
+    toggleBg: "#F1F5F9",
+    toggleInactive: "#64748B",
+    danger: "#dc2626",
+  },
+};
+
+// ── Componentes reutilizables con tema ─────────────────────────────
+const ThemedInput = ({
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  editable,
+  keyboardType,
+  autoCapitalize,
+  style,
+  colors,
+}) => (
+  <TextInput
+    style={[
+      {
+        backgroundColor: colors.inputBg,
+        borderWidth: 1,
+        borderColor: colors.inputBorder,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        fontSize: 15,
+        color: colors.text,
+      },
+      style,
+    ]}
+    value={value}
+    onChangeText={onChangeText}
+    placeholder={placeholder}
+    placeholderTextColor={colors.textMuted}
+    multiline={multiline}
+    editable={editable}
+    keyboardType={keyboardType}
+    autoCapitalize={autoCapitalize}
+  />
+);
+
+const ThemedPicker = ({
+  selectedValue,
+  onValueChange,
+  enabled,
+  children,
+  colors,
+}) => (
+  <View
+    style={{
+      backgroundColor: colors.pickerBg,
+      borderWidth: 1,
+      borderColor: colors.border2,
+      borderRadius: 10,
+      overflow: "hidden",
+    }}
+  >
+    <Picker
+      selectedValue={selectedValue}
+      onValueChange={onValueChange}
+      enabled={enabled !== false}
+      style={{
+        height: 50,
+        width: "100%",
+        color: colors.pickerColor,
+        backgroundColor: colors.pickerBg,
+      }}
+      dropdownIconColor={colors.textMuted}
+    >
+      {children}
+    </Picker>
+  </View>
+);
 
 export default function ActaRetiroScreen() {
   const router = useRouter();
@@ -29,6 +142,10 @@ export default function ActaRetiroScreen() {
   const isReadOnly = mode === "view";
   const tipoActa = "RETIRO";
 
+  const { theme } = useTheme();
+  const c = P[theme] ?? P.light;
+
+  // Estados catálogos
   const [oficinasBD, setOficinasBD] = useState([]);
   const [unidadesList, setUnidadesList] = useState([]);
   const [cargosList, setCargosList] = useState([]);
@@ -38,9 +155,16 @@ export default function ActaRetiroScreen() {
   const [modelosBD, setModelosBD] = useState([]);
   const [receptoresBD, setReceptoresBD] = useState([]);
 
+  // Estados de filtros dinámicos
+  const [empleadosFiltrados, setEmpleadosFiltrados] = useState([]);
+  const [marcasFiltradas, setMarcasFiltradas] = useState([]);
+  const [modelosFiltrados, setModelosFiltrados] = useState([]);
+  const [cargandoMarcas, setCargandoMarcas] = useState(false);
+  const [cargandoModelos, setCargandoModelos] = useState(false);
+
+  // Estados del formulario
   const [usuarioLogueado, setUsuarioLogueado] = useState("");
   const [cargoLogueado, setCargoLogueado] = useState("");
-
   const [tipoDestinatario, setTipoDestinatario] = useState("EMPLEADO");
   const [oficinaSel, setOficinaSel] = useState("");
   const [unidadSel, setUnidadSel] = useState("");
@@ -61,14 +185,14 @@ export default function ActaRetiroScreen() {
   const [tempInv, setTempInv] = useState("");
   const [tempDesc, setTempDesc] = useState("");
   const [tempDescripcion, setTempDescripcion] = useState("");
+  const [tempAsignado, setTempAsignado] = useState("");
   const [tempObs, setTempObs] = useState("");
-
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // CARGAR ACTA EN MODO VISTA
+  // ── Carga de datos ───────────────────────────────────────────────
   useEffect(() => {
-    const cargarDatos = async () => {
+    const cargarDatosActa = async () => {
       if (id) {
         try {
           const res = await api.get(`/actas/procesadas/${tipoActa}/${id}`);
@@ -97,18 +221,18 @@ export default function ActaRetiroScreen() {
           setCorrelativo(acta.correlativo || "");
 
           if (acta.items?.length > 0) {
-            setItems(
-              acta.items.map((item) => ({
-                ...item,
-                tipo: item.tipo || "Equipo",
-                marca: item.marca || "",
-                modelo: item.modelo || "",
-                serie: item.serie || "",
-                numFicha: item.numFicha || "",
-                numInv: item.numInv || "",
-                _idTemporal: Math.random().toString(),
-              })),
-            );
+            const itemsMapeados = acta.items.map((item) => ({
+              ...item,
+              tipo: item.tipo || "Equipo",
+              marca: item.marca || "",
+              modelo: item.modelo || "",
+              serie: item.serie || "",
+              numFicha: item.numFicha || "",
+              numInv: item.numInv || "",
+              asignado_a: item.asignado_a || "",
+              _idTemporal: Math.random().toString(),
+            }));
+            setItems(itemsMapeados);
           }
         } catch (error) {
           console.error("Error trayendo acta:", error);
@@ -116,12 +240,11 @@ export default function ActaRetiroScreen() {
         }
       }
     };
-    cargarDatos();
+    cargarDatosActa();
   }, [id]);
 
-  // CATÁLOGOS
   useEffect(() => {
-    const cargarTodo = async () => {
+    const cargarCatalogos = async () => {
       try {
         const nombre = await AsyncStorage.getItem("nomUsu");
         const cargo = await AsyncStorage.getItem("cargoUsu");
@@ -148,10 +271,10 @@ export default function ActaRetiroScreen() {
         console.error("Error al cargar datos:", error);
       }
     };
-    cargarTodo();
+    cargarCatalogos();
   }, []);
 
-  // UNIDADES
+  // ── Unidades y cargos (igual que actaEntrega) ─────────────────────
   useEffect(() => {
     if (oficinaSel) {
       const filtradas = oficinasBD.filter(
@@ -170,7 +293,6 @@ export default function ActaRetiroScreen() {
     }
   }, [oficinaSel, oficinasBD]);
 
-  // CARGOS
   useEffect(() => {
     if (oficinaSel && unidadSel) {
       const filtrados = oficinasBD.filter(
@@ -178,14 +300,72 @@ export default function ActaRetiroScreen() {
           String(item.nomOficina).trim() === String(oficinaSel).trim() &&
           String(item.unidad).trim() === String(unidadSel).trim(),
       );
-      setCargosList(
-        [...new Set(filtrados.map((item) => item.cargoOfi))].filter(Boolean),
-      );
+      const unicos = [
+        ...new Set(filtrados.map((item) => item.cargoOfi)),
+      ].filter(Boolean);
+      setCargosList(unicos);
     } else {
       setCargosList([]);
     }
   }, [oficinaSel, unidadSel, oficinasBD]);
 
+  // ── Filtro de empleados por oficina ──────────────────────────────
+  useEffect(() => {
+    if (!oficinaSel) {
+      setEmpleadosFiltrados([]);
+      setEmpleadoSelId("");
+      setEmpleadoSelNombre("");
+      return;
+    }
+    api
+      .get(`/catalogos/empleados/porOficina/${encodeURIComponent(oficinaSel)}`)
+      .then((res) => setEmpleadosFiltrados(res.data))
+      .catch((err) => console.error("Error filtrando empleados:", err));
+  }, [oficinaSel]);
+
+  // ── Filtro de marcas por tipo de equipo ───────────────────────────
+  useEffect(() => {
+    if (!tempTipo) {
+      setMarcasFiltradas([]);
+      setTempMarca("");
+      setTempModelo("");
+      setModelosFiltrados([]);
+      return;
+    }
+    setCargandoMarcas(true);
+    api
+      .get(`/catalogos/marcas/porTipo/${encodeURIComponent(tempTipo)}`)
+      .then((res) => {
+        setMarcasFiltradas(res.data);
+        setTempMarca("");
+        setTempModelo("");
+        setModelosFiltrados([]);
+      })
+      .catch((err) => console.error("Error filtrando marcas:", err))
+      .finally(() => setCargandoMarcas(false));
+  }, [tempTipo]);
+
+  // ── Filtro de modelos por tipo y marca ────────────────────────────
+  useEffect(() => {
+    if (!tempTipo || !tempMarca) {
+      setModelosFiltrados([]);
+      setTempModelo("");
+      return;
+    }
+    setCargandoModelos(true);
+    api
+      .get(
+        `/catalogos/modelos/porTipoMarca/${encodeURIComponent(tempTipo)}/${encodeURIComponent(tempMarca)}`,
+      )
+      .then((res) => {
+        setModelosFiltrados(res.data);
+        setTempModelo("");
+      })
+      .catch((err) => console.error("Error filtrando modelos:", err))
+      .finally(() => setCargandoModelos(false));
+  }, [tempTipo, tempMarca]);
+
+  // ── Funciones auxiliares (mostrarAlerta, agregarItem, eliminarItem, cancelarActa) ──
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
     if (Platform.OS === "web") {
       const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
@@ -207,35 +387,39 @@ export default function ActaRetiroScreen() {
 
   const agregarItem = () => {
     if (!tempTipo || !tempMarca || !tempModelo) {
-      mostrarAlerta("Atención", "Por favor selecciona Tipo, Marca y Modelo.");
+      mostrarAlerta(
+        "Atención",
+        "Por favor selecciona Tipo, Marca y Modelo del equipo.",
+      );
       return;
     }
     if (!tempSerie.trim()) {
       mostrarAlerta("Atención", "El número de serie es obligatorio.");
       return;
     }
-    setItems([
-      ...items,
-      {
-        tipo: tempTipo,
-        marca: tempMarca,
-        modelo: tempModelo,
-        serie: tempSerie,
-        numFicha: tempFicha,
-        numInv: tempInv,
-        _idTemporal: Date.now().toString(),
-      },
-    ]);
+    const nuevoItem = {
+      tipo: tempTipo,
+      marca: tempMarca,
+      modelo: tempModelo,
+      serie: tempSerie,
+      numFicha: tempFicha,
+      numInv: tempInv,
+      asignado_a: tempAsignado,
+      _idTemporal: Date.now().toString(),
+    };
+    setItems([...items, nuevoItem]);
     setTempTipo("");
     setTempMarca("");
     setTempModelo("");
     setTempSerie("");
     setTempFicha("");
     setTempInv("");
+    setTempAsignado("");
   };
 
-  const eliminarItem = (idTemp) =>
+  const eliminarItem = (idTemp) => {
     setItems(items.filter((item) => item._idTemporal !== idTemp));
+  };
 
   const cancelarActa = () => {
     if (Platform.OS === "web") {
@@ -257,8 +441,15 @@ export default function ActaRetiroScreen() {
     }
   };
 
-  // GUARDAR
+  // ── Guardar acta ─────────────────────────────────────────────────
   const generarActa = async () => {
+    let asignadoA = "";
+    if (tipoDestinatario === "EMPLEADO") {
+      asignadoA = unidadSel || oficinaSel || "-";
+    } else {
+      asignadoA = receptorEmpresa || "-";
+    }
+
     if (
       tipoDestinatario === "EMPLEADO" &&
       (!empleadoSelId || !empleadoSelNombre)
@@ -295,6 +486,7 @@ export default function ActaRetiroScreen() {
         serie: item.serie,
         numFicha: item.numFicha,
         numInv: item.numInv,
+        asignado_a: asignadoA,
       })),
     };
 
@@ -370,9 +562,7 @@ export default function ActaRetiroScreen() {
         obtenerPlantillaActiva("RETIRO"),
       ]);
 
-      const columnasRetiro = c.columnasTabla.filter(
-        (col) => col !== "asignado",
-      );
+      const columnasRetiro = c.columnasTabla;
 
       const colLabels = {
         marca: c.labelMarca,
@@ -391,16 +581,21 @@ export default function ActaRetiroScreen() {
             .map((col) => {
               if (col === "marca") return `<td>${item.marca || "N/A"}</td>`;
               if (col === "modelo") return `<td>${item.modelo || "N/A"}</td>`;
-              if (col === "serie")
+              if (col === "serie") {
                 return `
-            <td>S/N: ${item.serie || "N/A"}<br/>
+            <td>
+              S/N: ${item.serie || "N/A"}<br/>
               <span style="font-size:10px;color:#555;">
                 ${c.mostrarNumFicha ? "Ficha: " + (item.numFicha || "N/A") : ""}
                 ${c.mostrarNumFicha && c.mostrarNumInv ? " | " : ""}
                 ${c.mostrarNumInv ? "Inv: " + (item.numInv || "N/A") : ""}
               </span>
-            </td>`;
-              return "<td>-</td>";
+            </td>
+          `;
+              }
+              if (col === "asignado")
+                return `<td>${item.asignado_a || "—"}</td>`;
+              return `<td>-</td>`;
             })
             .join("");
           return `<tr>${celdas}</tr>`;
@@ -565,6 +760,98 @@ export default function ActaRetiroScreen() {
     }
   };
 
+  // ── Estilos dinámicos (con useMemo) ──────────────────────────────
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: c.bg },
+        scrollContent: { padding: 20, alignItems: "center", paddingBottom: 60 },
+        formContainer: { width: "100%", maxWidth: 900 },
+        mainTitle: {
+          fontSize: 24,
+          fontWeight: "800",
+          color: c.text,
+          marginBottom: 15,
+        },
+        card: {
+          backgroundColor: c.surface,
+          padding: 20,
+          borderRadius: 12,
+          marginBottom: 20,
+          shadowColor: c.cardShadow,
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 3,
+        },
+        sectionTitle: {
+          fontSize: 18,
+          fontWeight: "700",
+          color: c.text,
+          marginBottom: 15,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+          paddingBottom: 8,
+        },
+        label: {
+          fontSize: 14,
+          fontWeight: "600",
+          color: c.textMuted,
+          marginBottom: 6,
+        },
+        value: { fontSize: 15, fontWeight: "500", color: c.text },
+        row: {
+          flexDirection: "row",
+          justifyContent: "space-between",
+          marginBottom: 15,
+        },
+        toggleContainer: {
+          flexDirection: "row",
+          backgroundColor: c.toggleBg,
+          borderRadius: 8,
+          padding: 4,
+          marginBottom: 20,
+        },
+        toggleBtn: {
+          flex: 1,
+          paddingVertical: 10,
+          borderRadius: 6,
+          alignItems: "center",
+        },
+        toggleBtnActive: { backgroundColor: "#09528e", elevation: 2 },
+        toggleBtnText: {
+          fontSize: 14,
+          fontWeight: "600",
+          color: c.toggleInactive,
+        },
+        toggleBtnTextActive: { color: "#fff" },
+        buttonsContainer: { flexDirection: "row", gap: 10, marginTop: 10 },
+        cancelBtn: {
+          flex: 1,
+          backgroundColor: c.surface,
+          borderWidth: 1,
+          borderColor: c.border,
+          paddingVertical: 16,
+          borderRadius: 8,
+          alignItems: "center",
+        },
+        cancelBtnText: { color: c.textMuted, fontSize: 16, fontWeight: "700" },
+        saveBtn: {
+          flex: 1,
+          backgroundColor: "#3ac40d",
+          paddingVertical: 16,
+          borderRadius: 8,
+          flexDirection: "row",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+        readOnlyInput: { backgroundColor: c.surface2, color: c.textMuted },
+      }),
+    [c],
+  );
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -572,7 +859,6 @@ export default function ActaRetiroScreen() {
       <CustomScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
       >
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE ACTA" : "NUEVA ACTA DE RETIRO"}
@@ -587,9 +873,7 @@ export default function ActaRetiroScreen() {
             </Text>
           </View>
 
-          {/* DATOS GENERALES */}
           <View style={styles.card}>
-            {/* TOGGLE */}
             <View style={styles.toggleContainer}>
               <TouchableOpacity
                 style={[
@@ -642,364 +926,374 @@ export default function ActaRetiroScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* FORMULARIO EMPLEADO */}
-            {tipoDestinatario === "EMPLEADO" && (
+            {tipoDestinatario === "EMPLEADO" ? (
               <>
                 <View style={styles.row}>
                   <View style={{ flex: 1, marginRight: 10 }}>
                     <Text style={styles.label}>Oficina:</Text>
                     {isReadOnly ? (
-                      <TextInput
-                        style={[styles.input, styles.readOnlyInput]}
+                      <ThemedInput
                         value={oficinaSel}
                         editable={false}
+                        style={styles.readOnlyInput}
+                        colors={c}
                       />
                     ) : (
-                      <View style={styles.pickerWrapper}>
-                        <Picker
-                          selectedValue={oficinaSel}
-                          onValueChange={(val) => {
-                            setOficinaSel(val);
-                            setUnidadSel("");
-                            setCargoSel("");
-                          }}
-                        >
-                          <Picker.Item
-                            label="Seleccione..."
-                            value=""
-                            color="#94a3b8"
-                          />
-                          {[
-                            ...new Set(
-                              oficinasBD.map((item) =>
-                                String(item.nomOficina).trim(),
-                              ),
-                            ),
-                          ]
-                            .filter(Boolean)
-                            .map((nomOficina, index) => (
-                              <Picker.Item
-                                key={`ofi-${index}`}
-                                label={nomOficina}
-                                value={nomOficina}
-                              />
-                            ))}
-                        </Picker>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Unidad:</Text>
-                    {isReadOnly ? (
-                      <TextInput
-                        style={[styles.input, styles.readOnlyInput]}
-                        value={unidadSel}
-                        editable={false}
-                      />
-                    ) : (
-                      <View style={styles.pickerWrapper}>
-                        <Picker
-                          selectedValue={unidadSel}
-                          onValueChange={(val) => {
-                            setUnidadSel(val);
-                            setCargoSel("");
-                          }}
-                          enabled={unidadesList.length > 0}
-                        >
-                          <Picker.Item
-                            label="Seleccione..."
-                            value=""
-                            color="#94a3b8"
-                          />
-                          {unidadesList.map((unidad, index) => (
-                            <Picker.Item
-                              key={`uni-${index}`}
-                              label={unidad}
-                              value={unidad}
-                            />
-                          ))}
-                        </Picker>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.row}>
-                  <View style={{ flex: 1, marginRight: 10 }}>
-                    <Text style={styles.label}>Cargo:</Text>
-                    {isReadOnly ? (
-                      <TextInput
-                        style={[styles.input, styles.readOnlyInput]}
-                        value={cargoSel}
-                        editable={false}
-                      />
-                    ) : (
-                      <View style={styles.pickerWrapper}>
-                        <Picker
-                          selectedValue={cargoSel}
-                          onValueChange={setCargoSel}
-                          enabled={cargosList.length > 0}
-                        >
-                          <Picker.Item
-                            label="Seleccione..."
-                            value=""
-                            color="#94a3b8"
-                          />
-                          {cargosList.map((nombreCargo, index) => (
-                            <Picker.Item
-                              key={`car-${index}`}
-                              label={nombreCargo}
-                              value={nombreCargo}
-                            />
-                          ))}
-                        </Picker>
-                      </View>
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Empleado:</Text>
-                    {isReadOnly ? (
-                      <TextInput
-                        style={[styles.input, styles.readOnlyInput]}
-                        value={empleadoSelNombre}
-                        editable={false}
-                      />
-                    ) : (
-                      <View style={styles.pickerWrapper}>
-                        <Picker
-                          selectedValue={String(empleadoSelId)}
-                          onValueChange={(val) => {
-                            setEmpleadoSelId(val);
-                            const emp = empleadosBD.find(
-                              (e) =>
-                                String(
-                                  e.idEmpleados ||
-                                    e.idEmpleado ||
-                                    e.id ||
-                                    e.id_empleado,
-                                ) === String(val),
-                            );
-                            setEmpleadoSelNombre(emp?.nomEmp || "");
-                          }}
-                        >
-                          <Picker.Item
-                            label="Seleccione..."
-                            value=""
-                            color="#94a3b8"
-                          />
-                          {empleadosBD.map((item, index) => {
-                            const uniqueId = String(
-                              item.idEmpleados ||
-                                item.idEmpleado ||
-                                item.id ||
-                                item.id_empleado ||
-                                "",
-                            );
-                            return (
-                              <Picker.Item
-                                key={`emp-${uniqueId}-${index}`}
-                                label={item.nomEmp}
-                                value={uniqueId}
-                              />
-                            );
-                          })}
-                        </Picker>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </>
-            )}
-
-            {/* FORMULARIO RECEPTOR */}
-            {tipoDestinatario === "RECEPTOR" && (
-              <>
-                <View style={{ marginBottom: 15 }}>
-                  <Text style={styles.label}>Receptor:</Text>
-                  {isReadOnly ? (
-                    <TextInput
-                      style={[styles.input, styles.readOnlyInput]}
-                      value={receptorSelNombre}
-                      editable={false}
-                    />
-                  ) : (
-                    <View style={styles.pickerWrapper}>
-                      <Picker
-                        selectedValue={String(receptorSelId)}
+                      <ThemedPicker
+                        selectedValue={oficinaSel}
+                        colors={c}
                         onValueChange={(val) => {
-                          setReceptorSelId(val);
-                          const rec = receptoresBD.find(
-                            (r) => String(r.idReceptores) === String(val),
-                          );
-                          setReceptorSelNombre(rec?.nomRec || "");
-                          setReceptorEmpresa(rec?.emprRec || "");
-                          setReceptorCargo(rec?.cargoRec || "");
+                          setOficinaSel(val);
+                          setUnidadSel("");
+                          setCargoSel("");
                         }}
                       >
                         <Picker.Item
                           label="Seleccione..."
                           value=""
-                          color="#94a3b8"
+                          color={c.textMuted}
                         />
-                        {receptoresBD
-                          .filter((r) => r.estRec === "Activo")
-                          .map((rec) => (
+                        {[
+                          ...new Set(
+                            oficinasBD.map((item) =>
+                              String(item.nomOficina).trim(),
+                            ),
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .map((nom, idx) => (
                             <Picker.Item
-                              key={`rec-${rec.idReceptores}`}
-                              label={rec.nomRec}
-                              value={String(rec.idReceptores)}
+                              key={`ofi-${idx}`}
+                              label={nom}
+                              value={nom}
+                              color={c.pickerColor}
                             />
                           ))}
-                      </Picker>
-                    </View>
+                      </ThemedPicker>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Unidad:</Text>
+                    {isReadOnly ? (
+                      <ThemedInput
+                        value={unidadSel}
+                        editable={false}
+                        style={styles.readOnlyInput}
+                        colors={c}
+                      />
+                    ) : (
+                      <ThemedPicker
+                        selectedValue={unidadSel}
+                        colors={c}
+                        onValueChange={(val) => {
+                          setUnidadSel(val);
+                          setCargoSel("");
+                        }}
+                        enabled={unidadesList.length > 0}
+                      >
+                        <Picker.Item
+                          label="Seleccione..."
+                          value=""
+                          color={c.textMuted}
+                        />
+                        {unidadesList.map((unidad, idx) => (
+                          <Picker.Item
+                            key={`uni-${idx}`}
+                            label={unidad}
+                            value={unidad}
+                            color={c.pickerColor}
+                          />
+                        ))}
+                      </ThemedPicker>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={styles.label}>Cargo:</Text>
+                    {isReadOnly ? (
+                      <ThemedInput
+                        value={cargoSel}
+                        editable={false}
+                        style={styles.readOnlyInput}
+                        colors={c}
+                      />
+                    ) : (
+                      <ThemedPicker
+                        selectedValue={cargoSel}
+                        colors={c}
+                        onValueChange={setCargoSel}
+                        enabled={cargosList.length > 0}
+                      >
+                        <Picker.Item
+                          label="Seleccione..."
+                          value=""
+                          color={c.textMuted}
+                        />
+                        {cargosList.map((cargo, idx) => (
+                          <Picker.Item
+                            key={`car-${idx}`}
+                            label={cargo}
+                            value={cargo}
+                            color={c.pickerColor}
+                          />
+                        ))}
+                      </ThemedPicker>
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Empleado:</Text>
+                    {isReadOnly ? (
+                      <ThemedInput
+                        value={empleadoSelNombre}
+                        editable={false}
+                        style={styles.readOnlyInput}
+                        colors={c}
+                      />
+                    ) : (
+                      <ThemedPicker
+                        selectedValue={String(empleadoSelId)}
+                        colors={c}
+                        onValueChange={(val) => {
+                          setEmpleadoSelId(val);
+                          const emp = empleadosFiltrados.find(
+                            (e) => String(e.idEmpleados) === String(val),
+                          );
+                          setEmpleadoSelNombre(emp?.nomEmp || "");
+                        }}
+                        enabled={
+                          empleadosFiltrados.length > 0 && oficinaSel !== ""
+                        }
+                      >
+                        <Picker.Item
+                          label="Seleccione..."
+                          value=""
+                          color={c.textMuted}
+                        />
+                        {empleadosFiltrados.map((item) => (
+                          <Picker.Item
+                            key={`emp-${item.idEmpleados}`}
+                            label={item.nomEmp}
+                            value={String(item.idEmpleados)}
+                            color={c.pickerColor}
+                          />
+                        ))}
+                      </ThemedPicker>
+                    )}
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={{ marginBottom: 15 }}>
+                  <Text style={styles.label}>Receptor:</Text>
+                  {isReadOnly ? (
+                    <ThemedInput
+                      value={receptorSelNombre}
+                      editable={false}
+                      style={styles.readOnlyInput}
+                      colors={c}
+                    />
+                  ) : (
+                    <ThemedPicker
+                      selectedValue={String(receptorSelId)}
+                      colors={c}
+                      onValueChange={(val) => {
+                        setReceptorSelId(val);
+                        const rec = receptoresBD.find(
+                          (r) => String(r.idReceptores) === String(val),
+                        );
+                        setReceptorSelNombre(rec?.nomRec || "");
+                        setReceptorEmpresa(rec?.emprRec || "");
+                        setReceptorCargo(rec?.cargoRec || "");
+                      }}
+                    >
+                      <Picker.Item
+                        label="Seleccione..."
+                        value=""
+                        color={c.textMuted}
+                      />
+                      {receptoresBD
+                        .filter((r) => r.estRec === "Activo")
+                        .map((rec) => (
+                          <Picker.Item
+                            key={`rec-${rec.idReceptores}`}
+                            label={rec.nomRec}
+                            value={String(rec.idReceptores)}
+                            color={c.pickerColor}
+                          />
+                        ))}
+                    </ThemedPicker>
                   )}
                 </View>
                 <View style={styles.row}>
                   <View style={{ flex: 1, marginRight: 10 }}>
                     <Text style={styles.label}>Empresa:</Text>
-                    <TextInput
-                      style={[styles.input, styles.readOnlyInput]}
+                    <ThemedInput
                       value={receptorEmpresa}
                       editable={false}
+                      style={styles.readOnlyInput}
+                      colors={c}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.label}>Cargo:</Text>
-                    <TextInput
-                      style={[styles.input, styles.readOnlyInput]}
+                    <ThemedInput
                       value={receptorCargo}
                       editable={false}
+                      style={styles.readOnlyInput}
+                      colors={c}
                     />
                   </View>
                 </View>
               </>
             )}
 
-            {/* ASUNTO Y DESCRIPCIÓN */}
             <View style={{ marginBottom: 15 }}>
               <Text style={styles.label}>Asunto:</Text>
-              <TextInput
-                style={[styles.input, { height: 60, textAlignVertical: "top" }]}
-                multiline
+              <ThemedInput
                 value={tempDesc}
                 onChangeText={setTempDesc}
+                colors={c}
+                multiline
+                style={{ height: 60, textAlignVertical: "top" }}
                 editable={!isReadOnly}
                 placeholder="Asunto del acta..."
               />
             </View>
             <View style={{ marginBottom: 15 }}>
               <Text style={styles.label}>Descripción:</Text>
-              <TextInput
-                style={[styles.input, { height: 60, textAlignVertical: "top" }]}
-                multiline
-                maxLength={500}
+              <ThemedInput
                 value={tempDescripcion}
                 onChangeText={setTempDescripcion}
+                colors={c}
+                multiline
+                style={{ height: 60, textAlignVertical: "top" }}
                 editable={!isReadOnly}
                 placeholder="Descripción del equipo..."
               />
             </View>
           </View>
 
-          {/* AGREGAR EQUIPO */}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>AGREGAR EQUIPO</Text>
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.label}>Tipo:</Text>
-                  <View style={styles.pickerWrapper}>
-                    <Picker
-                      selectedValue={tempTipo}
-                      onValueChange={setTempTipo}
-                    >
+                  <ThemedPicker
+                    selectedValue={tempTipo}
+                    onValueChange={setTempTipo}
+                    colors={c}
+                  >
+                    <Picker.Item
+                      label="Seleccione..."
+                      value=""
+                      color={c.textMuted}
+                    />
+                    {tiposEquipoBD.map((item, idx) => (
                       <Picker.Item
-                        label="Seleccione..."
-                        value=""
-                        color="#94a3b8"
+                        key={`tipo-${idx}`}
+                        label={item.tipo}
+                        value={item.tipo}
+                        color={c.pickerColor}
                       />
-                      {tiposEquipoBD.map((item, index) => (
-                        <Picker.Item
-                          key={`tipo-${index}`}
-                          label={item.tipo}
-                          value={item.tipo}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
+                    ))}
+                  </ThemedPicker>
                 </View>
+
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>Marca:</Text>
-                  <View style={styles.pickerWrapper}>
-                    <Picker
-                      selectedValue={tempMarca}
-                      onValueChange={setTempMarca}
-                    >
+                  <Text style={styles.label}>
+                    Marca:{cargandoMarcas ? " ⏳" : ""}
+                  </Text>
+                  <ThemedPicker
+                    selectedValue={tempMarca}
+                    onValueChange={setTempMarca}
+                    enabled={marcasFiltradas.length > 0 && !cargandoMarcas}
+                    colors={c}
+                  >
+                    <Picker.Item
+                      label={
+                        !tempTipo
+                          ? "Elige tipo primero"
+                          : cargandoMarcas
+                            ? "Cargando..."
+                            : "Seleccione..."
+                      }
+                      value=""
+                      color={c.textMuted}
+                    />
+                    {marcasFiltradas.map((item, idx) => (
                       <Picker.Item
-                        label="Seleccione..."
-                        value=""
-                        color="#94a3b8"
+                        key={`marca-${idx}`}
+                        label={item.marca}
+                        value={item.marca}
+                        color={c.pickerColor}
                       />
-                      {marcasBD.map((item, index) => (
-                        <Picker.Item
-                          key={`marca-${index}`}
-                          label={item.marca}
-                          value={item.marca}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
+                    ))}
+                  </ThemedPicker>
                 </View>
+
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Modelo:</Text>
-                  <View style={styles.pickerWrapper}>
-                    <Picker
-                      selectedValue={tempModelo}
-                      onValueChange={setTempModelo}
-                    >
+                  <Text style={styles.label}>
+                    Modelo:{cargandoModelos ? " ⏳" : ""}
+                  </Text>
+                  <ThemedPicker
+                    selectedValue={tempModelo}
+                    onValueChange={setTempModelo}
+                    enabled={modelosFiltrados.length > 0 && !cargandoModelos}
+                    colors={c}
+                  >
+                    <Picker.Item
+                      label={
+                        !tempMarca
+                          ? "Elige marca primero"
+                          : cargandoModelos
+                            ? "Cargando..."
+                            : "Seleccione..."
+                      }
+                      value=""
+                      color={c.textMuted}
+                    />
+                    {modelosFiltrados.map((item, idx) => (
                       <Picker.Item
-                        label="Seleccione..."
-                        value=""
-                        color="#94a3b8"
+                        key={`modelo-${idx}`}
+                        label={item.modelo}
+                        value={item.modelo}
+                        color={c.pickerColor}
                       />
-                      {modelosBD.map((item, index) => (
-                        <Picker.Item
-                          key={`modelo-${index}`}
-                          label={item.modelo}
-                          value={item.modelo}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
+                    ))}
+                  </ThemedPicker>
                 </View>
               </View>
 
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.label, { color: "#dc2626" }]}>
+                  <Text style={[styles.label, { color: c.danger }]}>
                     Serie *:
                   </Text>
-                  <TextInput
-                    style={styles.input}
+                  <ThemedInput
                     value={tempSerie}
                     onChangeText={setTempSerie}
+                    colors={c}
                     placeholder="Obligatorio"
                   />
                 </View>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.label}>Número de Ficha:</Text>
-                  <TextInput
-                    style={styles.input}
+                  <ThemedInput
                     value={tempFicha}
                     onChangeText={setTempFicha}
+                    colors={c}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Número de Inventario:</Text>
-                  <TextInput
-                    style={styles.input}
+                  <ThemedInput
                     value={tempInv}
                     onChangeText={setTempInv}
+                    colors={c}
                   />
                 </View>
               </View>
@@ -1007,7 +1301,7 @@ export default function ActaRetiroScreen() {
               <TouchableOpacity
                 style={[
                   styles.saveBtn,
-                  { backgroundColor: "#0f172a", marginTop: 5 },
+                  { backgroundColor: "#0369a1", marginTop: 5 },
                 ]}
                 onPress={agregarItem}
               >
@@ -1018,7 +1312,6 @@ export default function ActaRetiroScreen() {
             </View>
           )}
 
-          {/* LISTA EQUIPOS */}
           {items.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.label}>
@@ -1033,14 +1326,14 @@ export default function ActaRetiroScreen() {
                     alignItems: "center",
                     padding: 10,
                     borderBottomWidth: 1,
-                    borderColor: "#eee",
+                    borderBottomColor: c.border,
                   }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "600", color: "#1e293b" }}>
+                    <Text style={{ fontWeight: "600", color: c.text }}>
                       {item.tipo} — {item.marca} {item.modelo}
                     </Text>
-                    <Text style={{ fontSize: 12, color: "#64748b" }}>
+                    <Text style={{ fontSize: 12, color: c.textMuted }}>
                       S/N: {item.serie || "N/A"} | Ficha:{" "}
                       {item.numFicha || "N/A"} | Inv: {item.numInv || "N/A"}
                     </Text>
@@ -1052,7 +1345,7 @@ export default function ActaRetiroScreen() {
                       <MaterialCommunityIcons
                         name="delete"
                         size={24}
-                        color="red"
+                        color={c.danger}
                       />
                     </TouchableOpacity>
                   )}
@@ -1061,19 +1354,18 @@ export default function ActaRetiroScreen() {
             </View>
           )}
 
-          {/* OBSERVACIÓN */}
           <View style={styles.card}>
             <Text style={styles.label}>Observación:</Text>
-            <TextInput
-              style={[styles.input, { height: 60, textAlignVertical: "top" }]}
-              multiline
+            <ThemedInput
               value={tempObs}
               onChangeText={setTempObs}
+              colors={c}
+              multiline
+              style={{ height: 60, textAlignVertical: "top" }}
               editable={!isReadOnly}
             />
           </View>
 
-          {/* BOTONES */}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity style={styles.saveBtn} onPress={generarActa}>
@@ -1110,111 +1402,3 @@ export default function ActaRetiroScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  scrollContent: { padding: 20, alignItems: "center", paddingBottom: 60 },
-  formContainer: { width: "100%", maxWidth: 900 },
-  mainTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#1e293b",
-    marginBottom: 15,
-  },
-  card: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 20,
-    shadowColor: "#94a3b8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e2e8f0",
-    paddingBottom: 8,
-  },
-  label: { fontSize: 14, fontWeight: "600", color: "#475569", marginBottom: 6 },
-  input: {
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: "#1e293b",
-  },
-  readOnlyInput: { backgroundColor: "#e2e8f0", color: "#64748b" },
-  value: { fontSize: 15, fontWeight: "500", color: "#1e293b" },
-  pickerWrapper: {
-    backgroundColor: "#f1f5f9",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 6,
-    justifyContent: "center",
-    height: 44,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-  toggleContainer: {
-    flexDirection: "row",
-    backgroundColor: "#f1f5f9",
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 20,
-  },
-  toggleBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-  toggleBtnActive: {
-    backgroundColor: "#09528e",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  toggleBtnText: { fontSize: 14, fontWeight: "600", color: "#64748b" },
-  toggleBtnTextActive: { color: "#fff" },
-  buttonsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 10,
-  },
-  cancelBtn: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    paddingVertical: 16,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cancelBtnText: { color: "#64748b", fontSize: 16, fontWeight: "700" },
-  saveBtn: {
-    flex: 1,
-    backgroundColor: "#3ac40d",
-    paddingVertical: 16,
-    borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  saveBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-});

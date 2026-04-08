@@ -14,13 +14,19 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { Picker } from "@react-native-picker/picker";
 import { Image } from "react-native";
+
+import { useTheme } from "../hooks/themeContext";
+import { Colors } from "../constants/theme";
+
 import {
   guardarLogoPersonalizado,
   obtenerLogo,
   eliminarLogoPersonalizado,
 } from "../services/logosStorage";
 import { invalidarCache, getConfigDefault } from "../services/plantillasCache";
+import { generarHTMLRecepcion } from "../utils/actaRecepcionHTML";
 import api from "../services/api";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
@@ -32,20 +38,39 @@ const COLORES_PRESET = [
   "#dc2626",
   "#7c3aed",
   "#ea580c",
-  "#000000",
+  "#ffffff",
 ];
 
-const COLUMNAS_DISPONIBLES = [
+/* ── Columnas por tipo de acta ── */
+const COLUMNAS_ENTREGA_RETIRO = [
   { key: "marca", label: "Marca" },
   { key: "modelo", label: "Modelo" },
   { key: "serie", label: "S/N - Inventario" },
   { key: "asignado", label: "Asignado a" },
 ];
 
+const COLUMNAS_RECEPCION = [
+  { key: "descr_prod", label: "Descripción" },
+  { key: "precio_prod", label: "Precio" },
+  { key: "num_recibo", label: "# Recibo" },
+  { key: "num_fact", label: "# Factura" },
+  { key: "fecha", label: "Fecha" },
+];
+
+const TIPOS_SIN_TABLA = ["MEMORANDUM", "OFICIO", "REPORTE", "PASE_SALIDA"];
+const TIPOS_SIN_CAMPOS_CLASICOS = ["RECEPCION", "REPORTE", "PASE_SALIDA"];
+
 export default function EditarPlantillaScreen() {
   const router = useRouter();
-  const { id, tipoActa } = useLocalSearchParams();
+  const { id, tipoActa: tipoActaParam } = useLocalSearchParams();
+  const [tipoDoc, setTipoDoc] = useState(tipoActaParam || "ENTREGA");
   const esNueva = !id;
+  const esRecepcion = tipoDoc === "RECEPCION";
+  const sinTabla = TIPOS_SIN_TABLA.includes(tipoDoc);
+
+  const columnasDisponibles = esRecepcion
+    ? COLUMNAS_RECEPCION
+    : COLUMNAS_ENTREGA_RETIRO;
 
   const [nombre, setNombre] = useState("Nueva Plantilla");
   const [config, setConfig] = useState(getConfigDefault());
@@ -54,6 +79,30 @@ export default function EditarPlantillaScreen() {
 
   const [logoConadeh, setLogoConadeh] = useState(null);
   const [logoInfo, setLogoInfo] = useState(null);
+
+  // --- VARIABLES DINÁMICAS DE TEMA ---
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  const bg = Colors?.[theme]?.background || (isDark ? "#0f172a" : "#f8fafc");
+  const textColor = Colors?.[theme]?.text || (isDark ? "#ffffff" : "#1e293b");
+  const subColor = isDark ? "#94a3b8" : "#64748b";
+  const surfaceBg = isDark ? "#1e293b" : "#ffffff";
+  const borderCol = isDark ? "#334155" : "#e2e8f0";
+  const highlightCol = isDark ? "#60a5fa" : "#09528e";
+  const inputBg = isDark ? "#0f172a" : "#f1f5f9";
+  const previewBg = isDark ? "#020617" : "#e2e8f0";
+
+  useEffect(() => {
+    if (esNueva) {
+      setConfig((prev) => ({
+        ...prev,
+        columnasTabla: esRecepcion
+          ? ["descr_prod", "precio_prod", "num_recibo", "num_fact", "fecha"]
+          : ["marca", "modelo", "serie", "asignado"],
+      }));
+    }
+  }, [esNueva, esRecepcion]);
 
   useEffect(() => {
     if (!esNueva) cargarPlantilla();
@@ -71,12 +120,13 @@ export default function EditarPlantillaScreen() {
 
   const cargarPlantilla = async () => {
     try {
-      const res = await api.get(`/plantillas/${tipoActa}`);
+      const res = await api.get(`/plantillas/${tipoActaParam || tipoDoc}`);
       const plantilla = res.data.find(
         (p) => String(p.idPlantilla) === String(id),
       );
       if (plantilla) {
         setNombre(plantilla.nombrePlantilla);
+        setTipoDoc(plantilla.tipoActa);
         setConfig(
           typeof plantilla.config === "string"
             ? JSON.parse(plantilla.config)
@@ -93,35 +143,31 @@ export default function EditarPlantillaScreen() {
   const seleccionarLogo = async (tipo) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      if (Platform.OS === "web")
-        window.alert("Se necesita permiso para acceder a las imágenes.");
-      else Alert.alert("Permiso requerido", "Se necesita acceso a la galería.");
+      Platform.OS === "web"
+        ? window.alert("Se necesita permiso para acceder a las imágenes.")
+        : Alert.alert("Permiso requerido", "Se necesita acceso a la galería.");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
       base64: true,
     });
-
     if (!result.canceled && result.assets[0].base64) {
       const ext = result.assets[0].uri.split(".").pop().toLowerCase();
       const mime = ext === "png" ? "image/png" : "image/jpeg";
       const base64Final = `data:${mime};base64,${result.assets[0].base64}`;
-
       await guardarLogoPersonalizado(tipo, base64Final);
-
-      if (tipo === "conadeh") setLogoConadeh(base64Final);
-      else setLogoInfo(base64Final);
+      tipo === "conadeh"
+        ? setLogoConadeh(base64Final)
+        : setLogoInfo(base64Final);
     }
   };
 
   const eliminarLogo = async (tipo) => {
     await eliminarLogoPersonalizado(tipo);
-    if (tipo === "conadeh") setLogoConadeh(null);
-    else setLogoInfo(null);
+    tipo === "conadeh" ? setLogoConadeh(null) : setLogoInfo(null);
   };
 
   const set = (key, value) => setConfig((prev) => ({ ...prev, [key]: value }));
@@ -135,8 +181,9 @@ export default function EditarPlantillaScreen() {
 
   const guardar = async () => {
     if (!nombre.trim()) {
-      if (Platform.OS === "web") window.alert("El nombre es obligatorio.");
-      else Alert.alert("Error", "El nombre es obligatorio.");
+      Platform.OS === "web"
+        ? window.alert("El nombre es obligatorio.")
+        : Alert.alert("Error", "El nombre es obligatorio.");
       return;
     }
     setGuardando(true);
@@ -144,37 +191,346 @@ export default function EditarPlantillaScreen() {
       if (esNueva) {
         await api.post("/plantillas", {
           nombrePlantilla: nombre,
-          tipoActa: tipoActa || "ENTREGA",
+          tipoActa: tipoDoc || "ENTREGA",
           config,
         });
       } else {
         await api.put(`/plantillas/${id}`, { nombrePlantilla: nombre, config });
       }
-      // Invalida cache para que el próximo PDF use la config nueva
-      await invalidarCache(tipoActa || "ENTREGA");
-
-      if (Platform.OS === "web")
-        window.alert("Plantilla guardada correctamente.");
-      else Alert.alert("Éxito", "Plantilla guardada correctamente.");
+      await invalidarCache(tipoDoc || "ENTREGA");
+      Platform.OS === "web"
+        ? window.alert("Plantilla guardada correctamente.")
+        : Alert.alert("Éxito", "Plantilla guardada correctamente.");
       router.back();
     } catch (e) {
-      if (Platform.OS === "web")
-        window.alert("No se pudo guardar la plantilla.");
-      else Alert.alert("Error", "No se pudo guardar la plantilla.");
+      Platform.OS === "web"
+        ? window.alert("No se pudo guardar la plantilla.")
+        : Alert.alert("Error", "No se pudo guardar la plantilla.");
     } finally {
       setGuardando(false);
     }
   };
 
-  //PREVIEW HTML
   const generarPreview = () => {
     const c = config;
 
+    if (tipoDoc === "MEMORANDUM") {
+      return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Preview Memorándum</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    color: #000;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 20mm;
+  }
+  .header-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-bottom: 2px solid ${c.colorLinea};
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+  }
+  .header-logo-left  { width: 120px; text-align: left; }
+  .header-logo-right { width: 120px; text-align: right; }
+  .header-center { text-align: center; }
+  .header-inst { font-weight: bold; font-size: 13px; text-transform: uppercase; }
+  .header-sub  { font-size: 11px; color: #333; margin-top: 3px; }
+  .logo-box {
+    width: 80px; height: 55px;
+    background: #e2e8f0; border-radius: 6px;
+    display: inline-flex; align-items: center;
+    justify-content: center; font-size: 9px; color: #94a3b8;
+  }
+  .subheader { text-align: center; margin-bottom: 30px; }
+  .subheader-unidad { font-weight: bold; font-size: 14px; text-transform: uppercase; }
+  .subheader-memo   { font-size: 12px; color: #222; margin-top: 5px; }
+  .meta-container { width: 75%; margin: 0 auto 25px auto; }
+  .campos-table { width: 100%; border-collapse: collapse; }
+  .campos-table td { padding: 6px; vertical-align: top; }
+  .campo-label { font-weight: bold; width: 25%; }
+  .campo-content { width: 75%; }
+  .campo-nombre { font-weight: bold; display: block; }
+  .campo-cargo  { font-size: 11px; color: #444; display: block; }
+  .body-content { width: 90%; margin: 0 auto; text-align: justify; }
+  .parrafo { margin-bottom: 15px; line-height: 1.6; }
+  .saludo  { margin-top: 25px; }
+  .firma-container { width: 100%; text-align: center; margin-top: 80px; }
+  .firma-linea {
+    width: 250px; border-top: 1px solid #000;
+    margin: 0 auto 5px auto; padding-top: 5px;
+  }
+  .firma-nombre { font-weight: bold; font-size: 12px; display: block; }
+  .firma-cargo  { font-size: 11px; color: #333; display: block; }
+</style>
+</head>
+<body>
+ 
+  <table class="header-table">
+    <tr>
+      <td class="header-logo-left">
+        <div class="logo-box">CONADEH</div>
+      </td>
+      <td class="header-center">
+        <div class="header-inst">Comisionado Nacional de los Derechos Humanos</div>
+        <div class="header-sub">(CONADEH) — Honduras, C.A.</div>
+      </td>
+      <td class="header-logo-right">
+        <div class="logo-box">InfoTec</div>
+      </td>
+    </tr>
+  </table>
+ 
+  <div class="subheader">
+    <div class="subheader-unidad">Unidad de Infotecnología</div>
+    <div class="subheader-memo">Memorándum &nbsp;IT-2026-001</div>
+  </div>
+ 
+  <div class="meta-container">
+    <table class="campos-table">
+      <tr>
+        <td class="campo-label">PARA:</td>
+        <td class="campo-content">
+          <span class="campo-nombre">Sara Sandoval</span>
+          <span class="campo-cargo">Jefe</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="campo-label">DE:</td>
+        <td class="campo-content">
+          <span class="campo-nombre">Ing. Marco Aguilera</span>
+          <span class="campo-cargo">Jefe de Infotecnología</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="campo-label">ASUNTO:</td>
+        <td class="campo-content" style="font-weight:bold;">
+          Notificación de Mantenimiento a Servidores
+        </td>
+      </tr>
+      <tr>
+        <td class="campo-label">FECHA:</td>
+        <td class="campo-content">3 de abril de 2026</td>
+      </tr>
+    </table>
+  </div>
+ 
+  <div class="body-content">
+    <hr style="border:0; border-top: 1px solid #ccc; margin-bottom: 20px;" />
+    <p class="parrafo">
+      Por este medio se le informa que el día sábado 07 de marzo se realizará
+      un mantenimiento preventivo a los servidores principales.
+    </p>
+    <p class="parrafo">
+      Los sistemas internos y la intranet experimentarán interrupciones
+      intermitentes entre las 08:00 AM y las 12:00 PM.
+    </p>
+    ${
+      c.mostrarDespedida !== false
+        ? `<p class="saludo">Saludos cordiales,</p>`
+        : ""
+    }
+  </div>
+ 
+  <div class="firma-container">
+    <div class="firma-linea"></div>
+    <span class="firma-nombre">Ing. Marco Aguilera</span>
+    <span class="firma-cargo">Jefe de Infotecnología</span>
+  </div>
+ 
+</body>
+</html>`;
+    }
+
+    //OFICIOS
+    if (tipoDoc === "OFICIO") {
+      return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Preview Oficio</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, sans-serif;
+    color: #000;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 25mm 20mm;
+  }
+ 
+  /* ── ENCABEZADO ── */
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+  .logo-box {
+    width: 80px; height: 55px;
+    background: #e2e8f0; border-radius: 6px;
+    display: inline-flex; align-items: center;
+    justify-content: center; font-size: 9px; color: #94a3b8;
+  }
+  .header-center { text-align: center; flex: 1; padding: 0 15px; }
+  .header-inst {
+    font-weight: bold; font-size: 13px;
+    text-transform: uppercase; margin: 0;
+  }
+  .header-sub { font-size: 11px; margin: 5px 0 0 0; }
+ 
+  /* ── BARRA ── */
+  .barra {
+    text-align: center;
+    padding: 7px 0;
+    border-top: 2px solid ${c.colorLinea};
+    border-bottom: 2px solid ${c.colorLinea};
+    margin-bottom: 35px;
+    font-weight: bold;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+ 
+  /* ── TÍTULO ── */
+  .titulo-oficio {
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    text-decoration: underline;
+    text-transform: uppercase;
+    margin-bottom: 30px;
+    letter-spacing: 0.5px;
+  }
+ 
+  /* ── DESTINATARIO ── */
+  .destinatario { margin-bottom: 20px; }
+  .destinatario span { display: block; }
+  .dest-nombre { font-weight: bold; }
+ 
+  /* ── ASUNTO ── */
+  .asunto { margin-bottom: 20px; }
+ 
+  /* ── PÁRRAFOS ── */
+  .parrafo {
+    margin-bottom: 14px;
+    text-align: justify;
+    line-height: 1.8;
+  }
+ 
+  /* ── FIRMA ── */
+  .firma-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 80px;
+  }
+  .firma-box { width: 300px; text-align: center; }
+  .firma-line {
+    border-top: 1px solid #000;
+    margin-bottom: 5px;
+  }
+</style>
+</head>
+<body>
+ 
+  <!-- ENCABEZADO -->
+  <div class="header-row">
+    <div class="logo-box">CONADEH</div>
+    <div class="header-center">
+      <p class="header-inst">Comisionado Nacional de los Derechos Humanos</p>
+      <p class="header-sub">(CONADEH) — Honduras, C.A.</p>
+    </div>
+    <div class="logo-box">InfoTec</div>
+  </div>
+ 
+  <!-- BARRA -->
+  <div class="barra">Unidad de Infotecnología</div>
+ 
+  <!-- TÍTULO -->
+  <div class="titulo-oficio">OFICIO IT-2026-001</div>
+ 
+  <!-- DESTINATARIO -->
+  <div class="destinatario">
+    <span>Licenciado(a)</span>
+    <span class="dest-nombre">Ana González</span>
+    <span>Jefa de Recursos Humanos</span>
+    <span style="margin-top:10px;">Licenciado(a) González:</span>
+  </div>
+ 
+  <!-- ASUNTO -->
+  <div class="asunto">
+    <strong>Asunto:</strong> Solicitud de información sobre personal activo
+  </div>
+ 
+  <!-- PÁRRAFOS EJEMPLO -->
+  <p class="parrafo">
+    Por este medio me permito dirigirme a usted con el fin de solicitar
+    respetuosamente la lista actualizada del personal activo asignado a la
+    unidad de sistemas, con el propósito de actualizar los registros de
+    acceso a los equipos tecnológicos institucionales.
+  </p>
+  <p class="parrafo">
+    Se agradece la atención prestada a la presente y quedo a su disposición
+    para cualquier información adicional que requiera.
+  </p>
+ 
+  ${
+    c.mostrarDespedida !== false
+      ? `<p class="parrafo">Saludos cordiales,</p>`
+      : ""
+  }
+ 
+  <!-- FIRMA -->
+  <div class="firma-wrapper">
+    <div class="firma-box">
+      <div class="firma-line"></div>
+      <strong>Ing. Marco Aguilera</strong><br/>
+      Jefe de Infotecnología
+    </div>
+  </div>
+ 
+</body>
+</html>`;
+    }
+
+    // ── RECEPCIÓN ──
+    if (esRecepcion) {
+      return generarHTMLRecepcion({
+        data: {
+          emisorNombre: "María José",
+          emisorCargo: "Desarrolladora",
+          proveedorNombre: "Nombre del Proveedor (Empresa S.A.)",
+          descripcion: "los siguientes productos",
+          items: [
+            {
+              descr_prod: "Licencia de Software",
+              precio_prod: "2500.00",
+              equivalente_lps: "63750.00",
+              num_recibo: "10293",
+              num_fact: "000-001-01",
+              fech_ARCDet: "22/03/2026",
+            },
+          ],
+          tituloActa: "ACTA DE RECEPCIÓN N° IT-2026-001",
+          correlativoFinal: "IT-2026-001",
+        },
+        config: c,
+        logos: { uriConadeh: logoConadeh, uriInfo: logoInfo },
+      });
+    }
+
+    // ── RESTO DE TIPOS (ENTREGA, RETIRO, OFICIO, etc.) ──
     const colLabels = {
-      marca: c.labelMarca,
-      modelo: c.labelModelo,
-      serie: c.labelSerie,
-      asignado: c.labelAsignado,
+      marca: c.labelMarca || "Marca",
+      modelo: c.labelModelo || "Modelo",
+      serie: c.labelSerie || "S/N - Inventario",
+      asignado: c.labelAsignado || "Asignado a",
     };
     const colData = {
       marca: "DELL",
@@ -182,179 +538,212 @@ export default function EditarPlantillaScreen() {
       serie: `S/N: ABC123<br/><span style="font-size:9px;color:#555;">Ficha: 001 | Inv: 002</span>`,
       asignado: "Recursos Humanos",
     };
-
-    const theadHTML = c.columnasTabla
+    const sinCamposClasicos = TIPOS_SIN_CAMPOS_CLASICOS.includes(tipoDoc);
+    const theadHTML = (c.columnasTabla || [])
       .map((col) => `<th>${colLabels[col] || col}</th>`)
       .join("");
-    const tbodyHTML = c.columnasTabla
+    const tbodyHTML = (c.columnasTabla || [])
       .map((col) => `<td>${colData[col] || "-"}</td>`)
       .join("");
 
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 11px;
-           color: #000; padding: 16px; line-height: 1.5; }
-    .header { display: flex; justify-content: space-between;
-              align-items: center; border-bottom: 2px solid ${c.colorLinea};
-              padding-bottom: 8px; margin-bottom: 14px; }
-    .logo-box { width: 55px; height: 40px; background: #e2e8f0;
-                border-radius: 4px; display: flex; align-items: center;
-                justify-content: center; font-size: 9px; color: #94a3b8; }
-    .title-box { text-align: center; flex: 1; padding: 0 8px; }
-    .title { font-weight: bold; font-size: 11px; text-transform: uppercase; }
-    .subtitle { font-size: 9px; color: #444; }
-    .acta-num { font-weight: bold; font-size: 12px;
-                text-decoration: underline; margin-top: 4px; }
-    .info-table { width: 100%; margin-bottom: 12px; border-collapse: collapse; }
-    .info-table td { padding: 2px 4px; font-size: 10px; vertical-align: top; }
-    .info-label { font-weight: bold; width: 65px; white-space: nowrap; }
-    .info-name { font-weight: bold; display: block; }
-    .info-role { font-size: 9.5px; color: #444; }
-    .divider { border: none; border-top: 2px solid ${c.colorLinea}; margin: 10px 0; }
-    .paragraph { font-size: 10px; text-align: justify;
-                 margin-bottom: 10px; line-height: 1.5; }
-    .eq-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    .eq-table th { background: #f0f0f0; font-weight: bold;
-                   border: 1px solid #555; padding: 4px 5px;
-                   text-align: center; font-size: 9px; text-transform: uppercase; }
-    .eq-table td { border: 1px solid #555; padding: 4px 5px;
-                   text-align: center; font-size: 9px; }
-    .observacion { font-size: 10px; margin: 6px 0 14px 0; }
-    .firmas { width: 100%; margin-top: 40px; border-collapse: collapse; }
-    .firma-cell { width: 42%; text-align: center;
-                  border-top: 1px solid #000; padding-top: 5px; font-size: 10px; }
-    .firma-spacer { width: 16%; }
-  </style>
-</head>
-<body>
+    const infoCamposHTML = !sinCamposClasicos
+      ? `<tr>
+         <td class="info-label">Para:</td>
+         <td><span class="info-name">Juan Pérez</span><span class="info-role">Secretario - RRHH</span></td>
+       </tr>
+       <tr>
+         <td class="info-label">De:</td>
+         <td><span class="info-name">María José</span><span class="info-role">Desarrolladora</span></td>
+       </tr>
+       <tr>
+         <td class="info-label">Asunto:</td>
+         <td>${tipoDoc === "RETIRO" ? "Retiro" : "Entrega"} de equipo tecnológico</td>
+       </tr>`
+      : "";
 
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #000; background: #fff; padding: 16px; line-height: 1.5; }
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid ${c.colorLinea}; padding-bottom: 8px; margin-bottom: 14px; }
+  .logo-box { width: 55px; height: 40px; background: #e2e8f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; }
+  .title-box { text-align: center; flex: 1; padding: 0 8px; }
+  .title { font-weight: bold; font-size: 11px; text-transform: uppercase; }
+  .subtitle { font-size: 9px; color: #444; }
+  .acta-num { font-weight: bold; font-size: 12px; text-decoration: underline; margin-top: 4px; }
+  .info-table { width: 100%; margin-bottom: 12px; border-collapse: collapse; }
+  .info-table td { padding: 2px 4px; font-size: 10px; vertical-align: top; }
+  .info-label { font-weight: bold; width: 65px; white-space: nowrap; }
+  .info-name  { font-weight: bold; display: block; }
+  .info-role  { font-size: 9.5px; color: #444; }
+  .divider { border: none; border-top: 2px solid ${c.colorLinea}; margin: 10px 0; }
+  .paragraph { font-size: 10px; text-align: justify; margin-bottom: 10px; line-height: 1.5; }
+  .eq-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .eq-table th { background: #f0f0f0; font-weight: bold; border: 1px solid #555; padding: 4px 5px; text-align: center; font-size: 9px; text-transform: uppercase; }
+  .eq-table td { border: 1px solid #555; padding: 4px 5px; text-align: center; font-size: 9px; }
+  .observacion { font-size: 10px; margin: 6px 0 14px 0; }
+  .firmas { width: 100%; margin-top: 40px; border-collapse: collapse; }
+  .firma-cell { width: 42%; text-align: center; border-top: 1px solid #000; padding-top: 5px; font-size: 10px; }
+  .firma-spacer { width: 16%; }
+  </style></head><body>
   <div class="header">
     <div class="logo-box">Logo</div>
     <div class="title-box">
       <div class="title">Comisionado Nacional de los Derechos Humanos</div>
-      <div class="subtitle">(CONADEH)</div>
-      <div class="subtitle">Honduras, C.A.</div>
-      <div class="acta-num">ACTA DE ${tipoActa || "ENTREGA"} N° IT-2026-001</div>
+      <div class="subtitle">(CONADEH) — Honduras, C.A.</div>
+      <div class="acta-num">ACTA DE ${tipoDoc} N° IT-2026-001</div>
     </div>
     <div class="logo-box">Logo</div>
   </div>
-
   <table class="info-table">
-    <tr>
-      <td class="info-label">Para:</td>
-      <td>
-        <span class="info-name">Juan Pérez</span>
-        <span class="info-role">Secretario - Recursos Humanos</span>
-      </td>
-    </tr>
-    <tr>
-      <td class="info-label">De:</td>
-      <td>
-        <span class="info-name">María José</span>
-        <span class="info-role">Desarrolladora</span>
-      </td>
-    </tr>
-    <tr>
-      <td class="info-label">Asunto:</td>
-      <td>Entrega de equipo tecnológico</td>
-    </tr>
-    ${
-      c.mostrarDescripcion
-        ? `
-    <tr>
-      <td class="info-label">Descripción:</td>
-      <td>Descripción del equipo asignado</td>
-    </tr>`
-        : ""
-    }
-    <tr>
-      <td class="info-label">Fecha:</td>
-      <td>Tegucigalpa M.D.C., 22 de marzo de 2026</td>
-    </tr>
+    ${infoCamposHTML}
+    ${c.mostrarDescripcion ? `<tr><td class="info-label">Descripción:</td><td>Descripción de ejemplo</td></tr>` : ""}
+    <tr><td class="info-label">Fecha:</td><td>Tegucigalpa M.D.C., 22 de marzo de 2026</td></tr>
   </table>
-
   <hr class="divider"/>
-
-  ${
-    c.mostrarParrafoIntro && c.textoIntro
-      ? `<p class="paragraph">${c.textoIntro}</p>`
-      : ""
-  }
-
-  <table class="eq-table">
-    <thead><tr>${theadHTML}</tr></thead>
-    <tbody><tr>${tbodyHTML}</tr></tbody>
-  </table>
-
-  ${
-    c.mostrarObservacion
-      ? `<p class="observacion"><strong>Pd.</strong> Observación de ejemplo</p>`
-      : ""
-  }
-
-  <table class="firmas">
-    <tr>
-      <td class="firma-cell">
-        <strong>Juan Pérez</strong><br/>Secretario
-      </td>
-      <td class="firma-spacer"></td>
-      <td class="firma-cell">
-        <strong>María José</strong><br/>Desarrolladora
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>`;
+  ${c.mostrarParrafoIntro && c.textoIntro ? `<p class="paragraph">${c.textoIntro}</p>` : ""}
+  ${!sinTabla && theadHTML ? `<table class="eq-table"><thead><tr>${theadHTML}</tr></thead><tbody><tr>${tbodyHTML}</tr></tbody></table>` : ""}
+  ${c.mostrarObservacion ? `<p class="observacion"><strong>Pd.</strong> Observación de ejemplo</p>` : ""}
+  <table class="firmas"><tr>
+    <td class="firma-cell"><strong>María José</strong><br/>Desarrolladora</td>
+    <td class="firma-spacer"></td>
+    <td class="firma-cell"><strong>Juan Pérez</strong><br/>Secretario</td>
+  </tr></table>
+  </body></html>`;
   };
+
+  const etiquetasAEditar = esRecepcion
+    ? [
+        { key: "labelDesc", placeholder: "Descripción" },
+        { key: "labelPrecio", placeholder: "Precio" },
+        { key: "labelRecibo", placeholder: "# Recibo" },
+        { key: "labelFactura", placeholder: "# Factura" },
+        { key: "labelFecha", placeholder: "Fecha" },
+      ]
+    : [
+        { key: "labelMarca", placeholder: "Marca" },
+        { key: "labelModelo", placeholder: "Modelo" },
+        { key: "labelSerie", placeholder: "S/N - Inventario" },
+        { key: "labelAsignado", placeholder: "Asignado a" },
+      ];
 
   if (cargando)
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
         <Header />
         <Navbar />
         <ActivityIndicator
           size="large"
-          color="#09528e"
+          color={highlightCol}
           style={{ marginTop: 40 }}
         />
       </SafeAreaView>
     );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
       <Header />
       <Navbar />
       <View style={styles.body}>
-        {/*PANEL IZQUIERDO — CONTROLES*/}
+        {/* PANEL IZQUIERDO */}
         <ScrollView
-          style={styles.panel}
+          style={[styles.panel, { borderRightColor: borderCol }]}
           contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
         >
-          <Text style={styles.mainTitle}>
+          <Text style={[styles.mainTitle, { color: textColor }]}>
             {esNueva ? "Nueva Plantilla" : "Editar Plantilla"}
           </Text>
 
-          {/* NOMBRE */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Nombre</Text>
+          {esNueva ? (
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: surfaceBg,
+                  shadowColor: isDark ? "#000" : "#94a3b8",
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: textColor }]}>
+                Tipo de Acta a Crear
+              </Text>
+              <View
+                style={[
+                  styles.pickerWrapper,
+                  { backgroundColor: inputBg, borderColor: borderCol },
+                ]}
+              >
+                <Picker
+                  selectedValue={tipoDoc}
+                  onValueChange={(itemValue) => setTipoDoc(itemValue)}
+                  style={[styles.picker, { color: textColor }]}
+                  dropdownIconColor={subColor}
+                >
+                  <Picker.Item label="Entrega" value="ENTREGA" />
+                  <Picker.Item label="Retiro" value="RETIRO" />
+                  <Picker.Item label="Recepción" value="RECEPCION" />
+                  <Picker.Item label="Memorándum" value="MEMORANDUM" />
+                  <Picker.Item label="Oficio" value="OFICIO" />
+                  <Picker.Item label="Reporte" value="REPORTE" />
+                  <Picker.Item label="Pase de Salida" value="PASE_SALIDA" />
+                </Picker>
+              </View>
+            </View>
+          ) : (
+            <Text
+              style={[
+                styles.tipoTag,
+                {
+                  backgroundColor: surfaceBg,
+                  color: highlightCol,
+                  borderColor: borderCol,
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              {tipoDoc}
+            </Text>
+          )}
+
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: surfaceBg,
+                shadowColor: isDark ? "#000" : "#94a3b8",
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              Nombre
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBg,
+                  borderColor: borderCol,
+                  color: textColor,
+                },
+              ]}
               value={nombre}
               onChangeText={setNombre}
               placeholder="Nombre de la plantilla..."
+              placeholderTextColor={subColor}
             />
           </View>
 
-          {/* COLOR */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Color de líneas</Text>
-
-            {/* CÍRCULOS PRESET */}
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: surfaceBg,
+                shadowColor: isDark ? "#000" : "#94a3b8",
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              Color de líneas
+            </Text>
             <View style={styles.colorRow}>
               {COLORES_PRESET.map((color) => (
                 <TouchableOpacity
@@ -362,13 +751,14 @@ export default function EditarPlantillaScreen() {
                   style={[
                     styles.colorCircle,
                     { backgroundColor: color },
-                    config.colorLinea === color && styles.colorCircleActive,
+                    config.colorLinea === color && {
+                      borderColor: highlightCol,
+                      transform: [{ scale: 1.1 }],
+                    },
                   ]}
                   onPress={() => set("colorLinea", color)}
                 />
               ))}
-
-              {/* CÍRCULO PERSONALIZADO */}
               {Platform.OS === "web" && (
                 <View style={styles.colorPickerWrapper}>
                   <input
@@ -379,117 +769,227 @@ export default function EditarPlantillaScreen() {
                       width: 32,
                       height: 32,
                       borderRadius: "50%",
-                      border: "2px solid #cbd5e1",
-                      padding: 0,
                       cursor: "pointer",
-                      backgroundColor: "transparent",
+                      border: `2px solid ${borderCol}`,
                     }}
-                    title="Color personalizado"
                   />
                 </View>
               )}
             </View>
-
-            {/* INPUT TEXTO — para pegar hex manualmente */}
             <View style={styles.colorInputRow}>
               <View
                 style={[
                   styles.colorMuestra,
-                  { backgroundColor: config.colorLinea },
+                  {
+                    backgroundColor: config.colorLinea,
+                    borderColor: borderCol,
+                  },
                 ]}
               />
               <TextInput
-                style={[styles.input, { flex: 1 }]}
+                style={[
+                  styles.input,
+                  {
+                    flex: 1,
+                    backgroundColor: inputBg,
+                    borderColor: borderCol,
+                    color: textColor,
+                  },
+                ]}
                 value={config.colorLinea}
                 onChangeText={(v) => set("colorLinea", v)}
                 placeholder="#1eb9de"
+                placeholderTextColor={subColor}
                 maxLength={7}
               />
             </View>
           </View>
 
-          {/* CAMPOS VISIBLES */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Campos visibles</Text>
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: surfaceBg,
+                shadowColor: isDark ? "#000" : "#94a3b8",
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              Campos visibles
+            </Text>
             {[
-              { key: "mostrarDescripcion", label: "Descripción" },
-              { key: "mostrarObservacion", label: "Observación (Pd.)" },
-              { key: "mostrarNumFicha", label: "Número de Ficha" },
-              { key: "mostrarNumInv", label: "Número de Inventario" },
-              { key: "mostrarParrafoIntro", label: "Párrafo introductorio" },
-            ].map(({ key, label }) => (
-              <View key={key} style={styles.switchRow}>
-                <Text style={styles.switchLabel}>{label}</Text>
-                <Switch
-                  value={!!config[key]}
-                  onValueChange={(v) => set(key, v)}
-                  trackColor={{ true: "#09528e" }}
-                  thumbColor="#fff"
-                />
-              </View>
-            ))}
+              {
+                key: "mostrarDescripcion",
+                label: "Descripción",
+                hide: TIPOS_SIN_CAMPOS_CLASICOS.includes(tipoDoc),
+              },
+              {
+                key: "mostrarObservacion",
+                label: "Observación (Pd.)",
+                hide: TIPOS_SIN_TABLA.includes(tipoDoc),
+              },
+              {
+                key: "mostrarNumFicha",
+                label: "Número de Ficha",
+                hide: sinTabla,
+              },
+              {
+                key: "mostrarNumInv",
+                label: "Número de Inventario",
+                hide: sinTabla,
+              },
+              {
+                key: "mostrarParrafoIntro",
+                label: "Párrafo introductorio",
+                hide: false,
+              },
+              {
+                key: "mostrarDespedida",
+                label: "Despedida (Saludos)",
+                hide: !["MEMORANDUM", "OFICIO"].includes(tipoDoc),
+              },
+            ]
+              .filter((i) => !i.hide)
+              .map(({ key, label }) => (
+                <View
+                  key={key}
+                  style={[styles.switchRow, { borderBottomColor: borderCol }]}
+                >
+                  <Text style={[styles.switchLabel, { color: subColor }]}>
+                    {label}
+                  </Text>
+                  <Switch
+                    value={!!config[key]}
+                    onValueChange={(v) => set(key, v)}
+                    trackColor={{ true: highlightCol, false: borderCol }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              ))}
           </View>
 
-          {/* TEXTO INTRO */}
           {config.mostrarParrafoIntro && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Texto introductorio</Text>
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: surfaceBg,
+                  shadowColor: isDark ? "#000" : "#94a3b8",
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: textColor }]}>
+                Texto introductorio
+              </Text>
               <TextInput
-                style={[styles.input, { height: 80, textAlignVertical: "top" }]}
+                style={[
+                  styles.input,
+                  {
+                    height: 80,
+                    textAlignVertical: "top",
+                    backgroundColor: inputBg,
+                    borderColor: borderCol,
+                    color: textColor,
+                  },
+                ]}
                 multiline
                 value={config.textoIntro}
                 onChangeText={(v) => set("textoIntro", v)}
-                placeholder="Por este medio se hace entrega al Sr(a)..."
+                placeholder="Por este medio se hace entrega..."
+                placeholderTextColor={subColor}
               />
             </View>
           )}
 
-          {/* COLUMNAS */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Columnas de la tabla</Text>
-            {COLUMNAS_DISPONIBLES.map(({ key, label }) => (
-              <View key={key} style={styles.switchRow}>
-                <Text style={styles.switchLabel}>{label}</Text>
-                <Switch
-                  value={config.columnasTabla.includes(key)}
-                  onValueChange={() => toggleColumna(key)}
-                  trackColor={{ true: "#09528e" }}
-                  thumbColor="#fff"
+          {!sinTabla && (
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: surfaceBg,
+                  shadowColor: isDark ? "#000" : "#94a3b8",
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: textColor }]}>
+                Columnas de la tabla
+              </Text>
+              {columnasDisponibles.map(({ key, label }) => (
+                <View
+                  key={key}
+                  style={[styles.switchRow, { borderBottomColor: borderCol }]}
+                >
+                  <Text style={[styles.switchLabel, { color: subColor }]}>
+                    {label}
+                  </Text>
+                  <Switch
+                    value={config.columnasTabla.includes(key)}
+                    onValueChange={() => toggleColumna(key)}
+                    trackColor={{ true: highlightCol, false: borderCol }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+
+          {!sinTabla && (
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: surfaceBg,
+                  shadowColor: isDark ? "#000" : "#94a3b8",
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: textColor }]}>
+                Etiquetas de columnas
+              </Text>
+              {etiquetasAEditar.map(({ key, placeholder }) => (
+                <TextInput
+                  key={key}
+                  style={[
+                    styles.input,
+                    {
+                      marginBottom: 8,
+                      backgroundColor: inputBg,
+                      borderColor: borderCol,
+                      color: textColor,
+                    },
+                  ]}
+                  value={config[key] || ""}
+                  onChangeText={(v) => set(key, v)}
+                  placeholder={placeholder}
+                  placeholderTextColor={subColor}
                 />
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
 
-          {/* ETIQUETAS */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Etiquetas de columnas</Text>
-            {[
-              { key: "labelMarca", placeholder: "Marca" },
-              { key: "labelModelo", placeholder: "Modelo" },
-              { key: "labelSerie", placeholder: "S/N - Inventario" },
-              { key: "labelAsignado", placeholder: "Asignado a" },
-            ].map(({ key, placeholder }) => (
-              <TextInput
-                key={key}
-                style={[styles.input, { marginBottom: 8 }]}
-                value={config[key]}
-                onChangeText={(v) => set(key, v)}
-                placeholder={placeholder}
-              />
-            ))}
-          </View>
-
-          {/* LOGOS */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Logos del documento</Text>
-            <Text style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>
-              Si no cambias un logo, se usará el que ya está configurado por
-              defecto.
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: surfaceBg,
+                shadowColor: isDark ? "#000" : "#94a3b8",
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              Logos del documento
+            </Text>
+            <Text style={[styles.logoInfoText, { color: subColor }]}>
+              Si no cambias un logo, se usará el configurado por defecto.
             </Text>
 
-            {/* Logo CONADEH */}
             <View style={styles.logoRow}>
-              <View style={styles.logoPreview}>
+              <View
+                style={[
+                  styles.logoPreview,
+                  { backgroundColor: inputBg, borderColor: borderCol },
+                ]}
+              >
                 {logoConadeh ? (
                   <Image
                     source={{ uri: logoConadeh }}
@@ -497,24 +997,40 @@ export default function EditarPlantillaScreen() {
                     resizeMode="contain"
                   />
                 ) : (
-                  <Text style={styles.logoPlaceholder}>
+                  <Text style={[styles.logoPlaceholder, { color: subColor }]}>
                     Logo CONADEH{"\n"}(actual)
                   </Text>
                 )}
               </View>
               <View style={styles.logoBtns}>
                 <TouchableOpacity
-                  style={styles.logoBtn}
+                  style={[
+                    styles.logoBtn,
+                    { backgroundColor: surfaceBg, borderColor: borderCol },
+                  ]}
                   onPress={() => seleccionarLogo("conadeh")}
                 >
-                  <Text style={styles.logoBtnText}>Cambiar</Text>
+                  <Text style={[styles.logoBtnText, { color: highlightCol }]}>
+                    Cambiar
+                  </Text>
                 </TouchableOpacity>
                 {logoConadeh && (
                   <TouchableOpacity
-                    style={[styles.logoBtn, styles.logoBtnReset]}
+                    style={[
+                      styles.logoBtnReset,
+                      {
+                        backgroundColor: isDark ? "#451a1a" : "#fef2f2",
+                        borderColor: isDark ? "#7f1d1d" : "#fca5a5",
+                      },
+                    ]}
                     onPress={() => eliminarLogo("conadeh")}
                   >
-                    <Text style={[styles.logoBtnText, { color: "#dc2626" }]}>
+                    <Text
+                      style={[
+                        styles.logoBtnResetText,
+                        { color: isDark ? "#f87171" : "#dc2626" },
+                      ]}
+                    >
                       Restaurar
                     </Text>
                   </TouchableOpacity>
@@ -522,9 +1038,13 @@ export default function EditarPlantillaScreen() {
               </View>
             </View>
 
-            {/* Logo InfoTecnología */}
             <View style={[styles.logoRow, { marginTop: 14 }]}>
-              <View style={styles.logoPreview}>
+              <View
+                style={[
+                  styles.logoPreview,
+                  { backgroundColor: inputBg, borderColor: borderCol },
+                ]}
+              >
                 {logoInfo ? (
                   <Image
                     source={{ uri: logoInfo }}
@@ -532,24 +1052,40 @@ export default function EditarPlantillaScreen() {
                     resizeMode="contain"
                   />
                 ) : (
-                  <Text style={styles.logoPlaceholder}>
+                  <Text style={[styles.logoPlaceholder, { color: subColor }]}>
                     Logo InfoTec{"\n"}(actual)
                   </Text>
                 )}
               </View>
               <View style={styles.logoBtns}>
                 <TouchableOpacity
-                  style={styles.logoBtn}
+                  style={[
+                    styles.logoBtn,
+                    { backgroundColor: surfaceBg, borderColor: borderCol },
+                  ]}
                   onPress={() => seleccionarLogo("info")}
                 >
-                  <Text style={styles.logoBtnText}>Cambiar</Text>
+                  <Text style={[styles.logoBtnText, { color: highlightCol }]}>
+                    Cambiar
+                  </Text>
                 </TouchableOpacity>
                 {logoInfo && (
                   <TouchableOpacity
-                    style={[styles.logoBtn, styles.logoBtnReset]}
+                    style={[
+                      styles.logoBtnReset,
+                      {
+                        backgroundColor: isDark ? "#451a1a" : "#fef2f2",
+                        borderColor: isDark ? "#7f1d1d" : "#fca5a5",
+                      },
+                    ]}
                     onPress={() => eliminarLogo("info")}
                   >
-                    <Text style={[styles.logoBtnText, { color: "#dc2626" }]}>
+                    <Text
+                      style={[
+                        styles.logoBtnResetText,
+                        { color: isDark ? "#f87171" : "#dc2626" },
+                      ]}
+                    >
                       Restaurar
                     </Text>
                   </TouchableOpacity>
@@ -558,11 +1094,11 @@ export default function EditarPlantillaScreen() {
             </View>
           </View>
 
-          {/* BOTONES */}
           <TouchableOpacity
             style={[
               styles.saveBtn,
-              guardando && { backgroundColor: "#93c5fd" },
+              { backgroundColor: highlightCol },
+              guardando && { opacity: 0.7 },
             ]}
             onPress={guardar}
             disabled={guardando}
@@ -571,21 +1107,32 @@ export default function EditarPlantillaScreen() {
               {guardando ? "Guardando..." : "Guardar Plantilla"}
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={styles.cancelBtn}
+            style={[
+              styles.cancelBtn,
+              { backgroundColor: surfaceBg, borderColor: borderCol },
+            ]}
             onPress={() => router.back()}
           >
-            <Text style={styles.cancelBtnText}>Cancelar</Text>
+            <Text style={[styles.cancelBtnText, { color: subColor }]}>
+              Cancelar
+            </Text>
           </TouchableOpacity>
         </ScrollView>
 
-        {/*PANEL DERECHO — PREVIEW (solo web) */}
+        {/* PANEL DERECHO (Preview) */}
         {Platform.OS === "web" && (
-          <View style={styles.previewPanel}>
-            <Text style={styles.previewTitle}>Vista previa en tiempo real</Text>
+          <View style={[styles.previewPanel, { backgroundColor: previewBg }]}>
+            <Text style={[styles.previewTitle, { color: textColor }]}>
+              Vista previa en tiempo real
+            </Text>
             <View style={styles.previewDoc}>
               <iframe
+                key={
+                  JSON.stringify(config) +
+                  (logoConadeh || "") +
+                  (logoInfo || "")
+                }
                 srcDoc={generarPreview()}
                 style={{ width: "100%", height: "100%", border: "none" }}
                 title="preview"
@@ -598,48 +1145,57 @@ export default function EditarPlantillaScreen() {
   );
 }
 
+// Estilos limpios sin colores fijos
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1 },
   body: { flex: 1, flexDirection: "row" },
-  panel: { width: 400, borderRightWidth: 1, borderRightColor: "#e2e8f0" },
+  panel: { width: 400, borderRightWidth: 1 },
   mainTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#1e293b",
-    marginBottom: 20,
+    marginBottom: 4,
+  },
+  tipoTag: {
+    fontSize: 11,
+    fontWeight: "700",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 20,
+    alignSelf: "flex-start",
+    marginBottom: 18,
   },
   section: {
-    backgroundColor: "#fff",
     borderRadius: 10,
     padding: 16,
     marginBottom: 14,
-    elevation: 2,
-    shadowColor: "#94a3b8",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.3,
     shadowRadius: 6,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#0f172a",
     marginBottom: 12,
   },
-  input: {
-    backgroundColor: "#f1f5f9",
+  pickerWrapper: {
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
+    overflow: "hidden",
+  },
+  picker: { backgroundColor: "transparent", padding: 10 },
+  input: {
+    borderWidth: 1,
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: "#1e293b",
   },
   colorRow: {
     flexDirection: "row",
     gap: 10,
     flexWrap: "wrap",
-    marginBottom: 4,
+    marginBottom: 10,
   },
   colorCircle: {
     width: 32,
@@ -648,9 +1204,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
-  colorCircleActive: {
-    borderColor: "#1e293b",
-    transform: [{ scale: 1.2 }],
+  colorPickerWrapper: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  colorInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  colorMuestra: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
   },
   switchRow: {
     flexDirection: "row",
@@ -658,11 +1226,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
   },
-  switchLabel: { fontSize: 14, color: "#475569" },
+  switchLabel: { fontSize: 14 },
   saveBtn: {
-    backgroundColor: "#09528e",
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: "center",
@@ -670,23 +1236,16 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   cancelBtn: {
-    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: "center",
   },
-  cancelBtnText: { color: "#64748b", fontSize: 15, fontWeight: "700" },
-  previewPanel: {
-    flex: 1,
-    backgroundColor: "#e2e8f0",
-    padding: 20,
-  },
+  cancelBtnText: { fontSize: 15, fontWeight: "700" },
+  previewPanel: { flex: 1, padding: 20 },
   previewTitle: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0f172a",
     marginBottom: 12,
   },
   previewDoc: {
@@ -694,44 +1253,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 8,
     overflow: "hidden",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
   },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
+  logoInfoText: { fontSize: 12, marginBottom: 14 },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 14 },
   logoPreview: {
     width: 90,
     height: 60,
-    backgroundColor: "#f1f5f9",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
   },
   logoImg: { width: "100%", height: "100%" },
-  logoPlaceholder: {
-    fontSize: 10,
-    color: "#94a3b8",
-    textAlign: "center",
-    lineHeight: 14,
-  },
+  logoPlaceholder: { fontSize: 10, textAlign: "center" },
   logoBtns: { gap: 8 },
   logoBtn: {
-    backgroundColor: "#f1f5f9",
     borderWidth: 1,
-    borderColor: "#cbd5e1",
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 6,
   },
-  logoBtnReset: { borderColor: "#fca5a5", backgroundColor: "#fef2f2" },
-  logoBtnText: { fontSize: 13, fontWeight: "600", color: "#09528e" },
+  logoBtnText: { fontSize: 13, fontWeight: "600" },
+  logoBtnReset: {
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+  },
+  logoBtnResetText: { fontSize: 13, fontWeight: "600" },
 });
