@@ -20,6 +20,7 @@ import { invalidarCache } from "../services/plantillasCache";
 import api from "../services/api";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 
 const TIPOS = [
@@ -105,6 +106,7 @@ export default function PlantillasScreen() {
       <Header />
       <Navbar />
       <CustomScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.contentWidth}>
         <View style={styles.topRow}>
           <Text style={[styles.title, { color: textColor }]}>
             Plantillas de Documentos
@@ -263,15 +265,26 @@ export default function PlantillasScreen() {
             </View>
           ))
         )}
+        </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );
 }
 
-// Se remueven los colores estáticos que causaban conflictos
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { padding: 20, paddingBottom: 60 },
+  scroll: {
+    flexGrow: 1,
+    alignItems: "center",
+    paddingTop: 40,
+    paddingBottom: 80,
+  },
+  contentWidth: {
+    width: "100%",
+    maxWidth: 1000,
+    paddingHorizontal: 20,
+  },
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",

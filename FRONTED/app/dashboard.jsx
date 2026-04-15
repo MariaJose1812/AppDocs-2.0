@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import Navbar from "../components/navBar";
 import Header from "../components/header";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 
 import { useTheme } from "../hooks/themeContext";
@@ -53,7 +54,6 @@ export default function DashboardScreen() {
   const borderCol = isDark ? "#334155" : "#e2e8f0";
   const mutedCol = isDark ? "#475569" : "#cbd5e1";
 
-  // ── Config de tipos (depende de isDark para colores adaptativos) ──────────
   const TIPOS_CONFIG = {
     ENTREGA: {
       nombre: "Acta de Entrega",
@@ -174,7 +174,7 @@ export default function DashboardScreen() {
   };
 
   const obtenerRangoPaginas = () => {
-    const delta = 1; // Cuántas páginas mostrar a los lados de la actual
+    const delta = 1;
     const rango = [];
     const rangoConPuntos = [];
     let l;
@@ -541,6 +541,7 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );
@@ -548,8 +549,17 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 60 },
-  content: { flex: 1, padding: 20, width: "100%" },
+  scrollContent: {
+    flexGrow: 1,
+    alignItems: "center", 
+    paddingTop: 40, 
+    paddingBottom: 80,
+  },
+  content: {
+    width: "100%",
+    maxWidth: 1000, 
+    paddingHorizontal: 20, 
+  },
   sectionTitle: { fontSize: 22, fontWeight: "800", marginBottom: 20 },
 
   searchContainer: {

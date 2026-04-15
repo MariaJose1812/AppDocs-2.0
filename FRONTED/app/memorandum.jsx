@@ -17,14 +17,16 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { generarHTMLMemorandum } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-// ── Paleta de colores por tema ────────────────────────────────────────────────
 const P = {
   dark: {
     bg: "#121212",
@@ -41,8 +43,8 @@ const P = {
     inputBg: "#2C2C2C",
     inputBorder: "#444444",
     cardShadow: "#000",
-    toggleBg: "#1E293B",       // fondo del contenedor del toggle
-    toggleInactive: "#A0A0A0", // color del texto inactivo
+    toggleBg: "#1E293B",
+    toggleInactive: "#A0A0A0",
     danger: "#ef4444",
     primary: "#09528e",
     success: "#16a34a",
@@ -62,15 +64,14 @@ const P = {
     inputBg: "#F1F5F9",
     inputBorder: "#CBD5E1",
     cardShadow: "#94A3B8",
-    toggleBg: "#F1F5F9",       // fondo del contenedor del toggle
-    toggleInactive: "#64748B", // color del texto inactivo
+    toggleBg: "#F1F5F9",
+    toggleInactive: "#64748B",
     danger: "#dc2626",
     primary: "#09528e",
     success: "#16a34a",
   },
 };
 
-// ── Componentes reutilizables con tema ────────────────────────────────────────
 const ThemedInput = ({
   value,
   onChangeText,
@@ -140,30 +141,30 @@ const ThemedPicker = ({
   </View>
 );
 
-// ─── Constantes del firmante por defecto ──────────────────────────────────────
 const EMISOR_KEY = "memorandum_emisor";
 const EMISOR_DEFAULT = {
   nombre: "Ing. Marco Aguilera",
   cargo: "Jefe de Infotecnología",
 };
 
-// ─── Tipo de receptor ─────────────────────────────────────────────────────────
+// RECEPTOR
 const TIPO_RECEPTOR = { EMPLEADO: "empleado", RECEPTOR: "receptor" };
 
 export default function MemorandumScreen() {
   const router = useRouter();
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  // ── Estado emisor (DE) ──────────────────────────────────────────────────────
+  //EMISOR
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [editandoEmisor, setEditandoEmisor] = useState(false);
 
-  // ── Estado receptor (PARA) ──────────────────────────────────────────────────
+  //ESTADO PARA
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
@@ -176,23 +177,23 @@ export default function MemorandumScreen() {
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
 
-  // ── Asunto y párrafos ───────────────────────────────────────────────────────
+  //ASUNTO Y PARRAFOS
   const [asunto, setAsunto] = useState("");
   const [tempItem, setTempItem] = useState("");
   const [items, setItems] = useState([]);
 
-  // ── Metadata ────────────────────────────────────────────────────────────────
+  //METADATA
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // ── Fecha formateada ────────────────────────────────────────────────────────
+  //FECHA
   const fechaHoy = new Date().toLocaleDateString("es-HN", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
 
-  // ── Cargar emisor + listas al montar ────────────────────────────────────────
+  //CARGAR EMISOR
   useEffect(() => {
     const cargarTodo = async () => {
       try {
@@ -219,7 +220,7 @@ export default function MemorandumScreen() {
     cargarTodo();
   }, []);
 
-  // ── Cargar memo en modo vista ────────────────────────────────────────────────
+  //CARGAR MEMO
   useEffect(() => {
     const cargarMemo = async () => {
       if (!id) return;
@@ -255,27 +256,29 @@ export default function MemorandumScreen() {
     cargarMemo();
   }, [id]);
 
-  // ── Helper de alertas ────────────────────────────────────────────────────────
+  //ALERTAS
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        if (window.confirm(texto))
-          botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
-  // ── Guardar emisor ──────────────────────────────────────────────────────────
   const guardarEmisor = async () => {
     if (!emisorNombre.trim()) {
       mostrarAlerta("Atención", "El nombre del firmante no puede estar vacío.");
@@ -292,7 +295,7 @@ export default function MemorandumScreen() {
     }
   };
 
-  // ── Agregar párrafo ─────────────────────────────────────────────────────────
+  //AGREGGAR PARRAFO
   const agregarItem = () => {
     if (!tempItem.trim()) {
       mostrarAlerta("Atención", "El párrafo no puede estar vacío.");
@@ -308,28 +311,21 @@ export default function MemorandumScreen() {
   const eliminarItem = (idTemp) =>
     setItems(items.filter((i) => i._idTemporal !== idTemp));
 
-  // ── Cancelar ────────────────────────────────────────────────────────────────
   const cancelar = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
-    }
+      ],
+    );
   };
 
-  // ── Obtener datos del destinatario para PDF ─────────────────────────────────
   const getNombreParaPDF = () => {
     if (isReadOnly) return receptorSelNombre;
     return tipoReceptor === TIPO_RECEPTOR.EMPLEADO
@@ -343,7 +339,6 @@ export default function MemorandumScreen() {
       : receptorCargo;
   };
 
-  // ── Guardar memorándum ──────────────────────────────────────────────────────
   const guardarMemorandum = async () => {
     if (!emisorNombre.trim()) {
       mostrarAlerta("Error", "Ingresa el nombre del firmante (DE).");
@@ -401,7 +396,7 @@ export default function MemorandumScreen() {
     }
   };
 
-  // ── Generar PDF (sin cambios) ───────────────────────────────────────────────
+  //Generar PDF
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
@@ -423,6 +418,7 @@ export default function MemorandumScreen() {
     setIsPrinting(true);
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
+
       const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
         await Promise.all([
           getLogoURIs(),
@@ -432,181 +428,20 @@ export default function MemorandumScreen() {
       const nombrePara = getNombreParaPDF();
       const cargoPara = getCargoParaPDF();
 
-      const parrafos = items
-        .map((item) => `<p class="parrafo">${item.desc_MMDet}</p>`)
-        .join("");
-
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Memorándum ${correlativoFinal}</title>
-<style>
-  @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, sans-serif;
-    color: #000;
-    font-size: 12px;
-    line-height: 1.6;
-    padding: 20mm;
-  }
-
-  .header-table {
-    width: 100%;
-    border-collapse: collapse;
-    border-bottom: 2px solid ${cPlantilla.colorLinea};
-    padding-bottom: 10px;
-    margin-bottom: 20px;
-  }
-  .header-logo-left { width: 120px; text-align: left; }
-  .header-logo-right { width: 120px; text-align: right; }
-  .header-center { text-align: center; }
-  .header-inst {
-    font-weight: bold;
-    font-size: 13px;
-    text-transform: uppercase;
-  }
-  .header-sub { font-size: 11px; color: #333; margin-top: 3px; }
-  .logo-conadeh { height: 60px; object-fit: contain; }
-  .logo-info    { height: 60px; object-fit: contain; }
-
-  .subheader {
-    text-align: center;
-    margin-bottom: 30px;
-  }
-  .subheader-unidad {
-    font-weight: bold;
-    font-size: 14px;
-    text-transform: uppercase;
-  }
-  .subheader-memo {
-    font-size: 12px;
-    color: #222;
-    margin-top: 5px;
-  }
-
-  .meta-container {
-    width: 75%;
-    margin: 0 auto 25px auto;
-  }
-  .campos-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .campos-table td { 
-    padding: 6px; 
-    vertical-align: top; 
-  }
-  .campo-label {
-    font-weight: bold;
-    width: 25%;
-  }
-  .campo-content {
-    width: 75%;
-  }
-  .campo-nombre { font-weight: bold; display: block; }
-  .campo-cargo  { font-size: 11px; color: #444; display: block; }
-
-  .body-content {
-    width: 90%;
-    margin: 0 auto;
-    text-align: justify;
-  }
-  .parrafo {
-    margin-bottom: 15px;
-    line-height: 1.6;
-  }
-  .saludo {
-    margin-top: 25px;
-  }
-
-  .firma-container {
-    width: 100%;
-    text-align: center;
-    margin-top: 80px;
-  }
-  .firma-linea {
-    width: 250px;
-    border-top: 1px solid #000;
-    margin: 0 auto 5px auto;
-    padding-top: 5px;
-  }
-  .firma-nombre {
-    font-weight: bold;
-    font-size: 12px;
-    display: block;
-  }
-  .firma-cargo {
-    font-size: 11px;
-    color: #333;
-    display: block;
-  }
-</style>
-</head>
-<body>
-
-  <table class="header-table">
-    <tr>
-      <td class="header-logo-left">
-        <img src="${uriConadeh}" class="logo-conadeh" alt="CONADEH"/>
-      </td>
-      <td class="header-center">
-        <div class="header-inst">Comisionado Nacional de los Derechos Humanos</div>
-        <div class="header-sub">(CONADEH) — Honduras, C.A.</div>
-      </td>
-      <td class="header-logo-right">
-        <img src="${uriInfo}" class="logo-info" alt="Infotecnología"/>
-      </td>
-    </tr>
-  </table>
-
-  <div class="subheader">
-    <div class="subheader-unidad">Unidad de Infotecnología</div>
-    <div class="subheader-memo">Memorándum &nbsp;${correlativoFinal}</div>
-  </div>
-
-  <div class="meta-container">
-    <table class="campos-table">
-      <tr>
-        <td class="campo-label">PARA:</td>
-        <td class="campo-content">
-          <span class="campo-nombre">${nombrePara || "—"}</span>
-          <span class="campo-cargo">${cargoPara || ""}</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="campo-label">DE:</td>
-        <td class="campo-content">
-          <span class="campo-nombre">${emisorNombre}</span>
-          <span class="campo-cargo">${emisorCargo}</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="campo-label">ASUNTO:</td>
-        <td class="campo-content" style="font-weight:bold;">${asunto}</td>
-      </tr>
-      <tr>
-        <td class="campo-label">FECHA:</td>
-        <td class="campo-content">${fechaHoy}</td>
-      </tr>
-    </table>
-  </div>
-
-  <div class="body-content">
-    <hr style="border:0; border-top: 1px solid #ccc; margin-bottom: 20px;" />
-    ${parrafos}
-    <p class="saludo">Saludos cordiales,</p>
-  </div>
-
-  <div class="firma-container">
-    <div class="firma-linea"></div>
-    <span class="firma-nombre">${emisorNombre}</span>
-    <span class="firma-cargo">${emisorCargo}</span>
-  </div>
-
-</body>
-</html>`;
+      const htmlContent = generarHTMLMemorandum({
+        data: {
+          emisorNombre,
+          emisorCargo,
+          receptorNombre: nombrePara,
+          receptorCargo: cargoPara,
+          asunto,
+          fecha: fechaHoy,
+          correlativoFinal,
+          items,
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+      });
 
       if (Platform.OS === "web") {
         const win = window.open("", "_blank");
@@ -645,7 +480,6 @@ export default function MemorandumScreen() {
     }
   };
 
-  // ── Estilos dinámicos con useMemo ───────────────────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -787,7 +621,7 @@ export default function MemorandumScreen() {
         },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -809,7 +643,6 @@ export default function MemorandumScreen() {
     [c],
   );
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -920,7 +753,8 @@ export default function MemorandumScreen() {
                   <TouchableOpacity
                     style={[
                       styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.EMPLEADO && styles.toggleBtnActive,
+                      tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
+                        styles.toggleBtnActive,
                     ]}
                     onPress={() => {
                       setTipoReceptor(TIPO_RECEPTOR.EMPLEADO);
@@ -935,7 +769,8 @@ export default function MemorandumScreen() {
                     <Text
                       style={[
                         styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.EMPLEADO && styles.toggleBtnTextActive,
+                        tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
+                          styles.toggleBtnTextActive,
                       ]}
                     >
                       Empleado
@@ -944,7 +779,8 @@ export default function MemorandumScreen() {
                   <TouchableOpacity
                     style={[
                       styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.RECEPTOR && styles.toggleBtnActive,
+                      tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
+                        styles.toggleBtnActive,
                     ]}
                     onPress={() => {
                       setTipoReceptor(TIPO_RECEPTOR.RECEPTOR);
@@ -959,7 +795,8 @@ export default function MemorandumScreen() {
                     <Text
                       style={[
                         styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.RECEPTOR && styles.toggleBtnTextActive,
+                        tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
+                          styles.toggleBtnTextActive,
                       ]}
                     >
                       Receptor externo
@@ -1137,7 +974,7 @@ export default function MemorandumScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -1160,6 +997,7 @@ export default function MemorandumScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

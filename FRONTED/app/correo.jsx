@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { getLogoURIs } from "../constants/logosURIS";
@@ -20,63 +21,25 @@ import { Colors } from "../constants/theme";
 import { FlatList } from "react-native";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
+import { useAlert } from "../context/alertContext";
 import api from "../services/api";
-import { generarHTMLRecepcion } from "../utils/actaRecepcionHTML";
-
-/* ── Configuración de tipos de documentos ── */
-const TIPOS_CONFIG = {
-  ENTREGA: {
-    nombre: "Acta de Entrega",
-    icono: "file-arrow-up-down-outline",
-    color: "#3ac40d",
-  },
-  RETIRO: {
-    nombre: "Acta de Retiro",
-    icono: "file-arrow-left-right-outline",
-    color: "#cc7625",
-  },
-  RECEPCION: {
-    nombre: "Acta de Recepción",
-    icono: "file-check-outline",
-    color: "#09528e",
-  },
-  MEMORANDUM: {
-    nombre: "Memorándum",
-    icono: "email-edit-outline",
-    color: "#70e0f4",
-  },
-  OFICIO: {
-    nombre: "Oficio",
-    icono: "file-document-outline",
-    color: "#334155",
-  },
-  PASE_SALIDA: {
-    nombre: "Pase de Salida",
-    icono: "file-export-outline",
-    color: "#e63946",
-  },
-  REPORTE: {
-    nombre: "Reporte de Daño",
-    icono: "file-alert-outline",
-    color: "#2a9d8f",
-  },
-};
-
-const FILTROS = [
-  { id: "Todos", nombre: "Todos", icono: "filter-variant", color: "#64748b" },
-  ...Object.entries(TIPOS_CONFIG).map(([key, val]) => ({
-    id: key,
-    nombre: val.nombre.replace("Acta de ", ""),
-    icono: val.icono,
-    color: val.color,
-  })),
-];
+import {
+  generarHTMLEntrega,
+  generarHTMLRetiro,
+  generarHTMLMemorandum,
+  generarHTMLRecepcion,
+  generarHTMLOficio,
+  generarHTMLPaseSalida,
+  generarHTMLReporte,
+} from "../utils/documentosHTML";
 
 export default function CorreoScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const { showAlert } = useAlert();
 
   // Colores dinámicos según tema
   const bg = Colors[theme]?.background || (isDark ? "#0f172a" : "#f8fafc");
@@ -87,6 +50,55 @@ export default function CorreoScreen() {
   const inputBg = isDark ? "#0f172a" : "#f1f5f9";
   const inputBorder = isDark ? "#334155" : "#cbd5e1";
   const highlightCol = isDark ? "#60a5fa" : "#09528e";
+
+  //CONFIG TIPOS DE DOCS
+  const TIPOS_CONFIG = {
+    ENTREGA: {
+      nombre: "Acta de Entrega",
+      icono: "file-arrow-up-down-outline",
+      color: "#3ac40d",
+    },
+    RETIRO: {
+      nombre: "Acta de Retiro",
+      icono: "file-arrow-left-right-outline",
+      color: "#cc7625",
+    },
+    RECEPCION: {
+      nombre: "Acta de Recepción",
+      icono: "file-check-outline",
+      color: isDark ? "#60a5fa" : "#09528e",
+    },
+    MEMORANDUM: {
+      nombre: "Memorándum",
+      icono: "email-edit-outline",
+      color: "#70e0f4",
+    },
+    OFICIO: {
+      nombre: "Oficio",
+      icono: "file-document-outline",
+      color: isDark ? "#94a3b8" : "#333333",
+    },
+    PASE_SALIDA: {
+      nombre: "Pase de Salida",
+      icono: "file-export-outline",
+      color: "#e63946",
+    },
+    REPORTE: {
+      nombre: "Reporte de Daño",
+      icono: "file-alert-outline",
+      color: "#2a9d8f",
+    },
+  };
+
+  const FILTROS = [
+    { id: "Todos", nombre: "Todos", icono: "filter-variant", color: "#64748b" },
+    ...Object.entries(TIPOS_CONFIG).map(([key, val]) => ({
+      id: key,
+      nombre: val.nombre.replace("Acta de ", ""),
+      icono: val.icono,
+      color: val.color,
+    })),
+  ];
 
   // Estados del formulario
   const [para, setPara] = useState("");
@@ -205,9 +217,9 @@ export default function CorreoScreen() {
     acta_retiro_encabezado: "RETIRO",
     acta_recepcion_encabezado: "RECEPCION",
     memorandum_encabezado: "MEMORANDUM",
-    oficio_encabezado: "OFICIO",
+    oficios_encabezado: "OFICIO",
     pase_salida_encabezado: "PASE_SALIDA",
-    reporte_dano_encabezado: "REPORTE",
+    reportes_encabezado: "REPORTE",
   };
 
   const generarHTMLParaDocumento = async (item) => {
@@ -221,14 +233,22 @@ export default function CorreoScreen() {
           colorLinea: "#1eb9de",
         })),
       ]);
-      const colorLinea = c?.colorLinea || "#1eb9de";
+
+      // Mapeo de rutas según tipo
+      const endpointMap = {
+        ENTREGA: `/actas/procesadas/ENTREGA/${item.id}`,
+        RETIRO: `/actas/procesadas/RETIRO/${item.id}`,
+        RECEPCION: `/actas/detalle/RECEPCION/${item.id}`,
+        MEMORANDUM: `/actas/memorandum/${item.id}`,
+        OFICIO: `/actas/detalle/OFICIO/${item.id}`,
+        PASE_SALIDA: `/actas/pase-salida/${item.id}`,
+        REPORTE: `/actas/detalle/REPORTE/${item.id}`,
+      };
+      const endpoint =
+        endpointMap[tipoNorm] || `/actas/detalle/${tipoNorm}/${item.id}`;
 
       let detalle = {};
       try {
-        const endpoint =
-          tipoNorm === "RECEPCION"
-            ? `/actas/detalle/RECEPCION/${item.id}`
-            : `/actas/procesadas/${tipoNorm}/${item.id}`;
         const res = await api.get(endpoint);
         detalle = (Array.isArray(res.data) ? res.data[0] : res.data) || {};
       } catch (e) {
@@ -236,11 +256,22 @@ export default function CorreoScreen() {
       }
 
       const correlativo = detalle?.correlativo || item.correlativo || "";
+      const imagenesUrls = detalle?.imagenes || [];
+      let imagenesHTML = "";
+      if (imagenesUrls.length > 0) {
+        imagenesHTML = `
+        <div style="margin-top:20px;page-break-inside:avoid;">
+          <p style="font-weight:bold;font-size:11px;margin-bottom:8px;">Evidencias fotográficas:</p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;">
+            ${imagenesUrls.map((url) => `<img src="${url}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`).join("")}
+          </div>
+        </div>`;
+      }
 
+      //RECEPCION
       if (tipoNorm === "RECEPCION") {
         const firmante = detalle?.firmante || {};
         const receptorData = detalle?.receptor || {};
-
         const dataParaHtml = {
           emisorNombre: firmante.nombre || "—",
           emisorCargo: firmante.cargo || "Jefe de la Unidad de Infotecnologia",
@@ -258,139 +289,337 @@ export default function CorreoScreen() {
           tituloActa: "ACTA DE RECEPCIÓN",
           correlativoFinal: correlativo,
         };
-
         const html = generarHTMLRecepcion({
           data: dataParaHtml,
           config: c,
           logos: { uriConadeh, uriInfo },
         });
-
         return { html, nombre: `Acta de Recepción_${correlativo}.pdf` };
       }
 
-      const asunto = detalle?.asunto || item.asunto || "";
-      const descripcion = detalle?.descripcion || "";
-      const observacion = detalle?.observacion || "";
-      const receptorNombre =
-        detalle?.receptor?.nombre || detalle?.receptorNombre || "—";
-      const receptorCargo =
-        detalle?.receptor?.cargo || detalle?.receptorCargo || "";
-      const emisorNombre =
-        detalle?.emisor?.nombre || detalle?.usuarioCreador || "—";
-      const emisorCargo = detalle?.emisor?.cargo || detalle?.cargoCreador || "";
+      //ENTREGA y RETIRO
+      if (tipoNorm === "ENTREGA") {
+        const itemsEquipos = (detalle?.items || []).map((eq) => ({
+          ...eq,
+          asignado_a: eq.asignado_a || detalle?.asignado_a || "",
+        }));
+        const html = generarHTMLEntrega({
+          data: {
+            emisorNombre: detalle?.emisor?.nombre || "—",
+            emisorCargo: detalle?.emisor?.cargo || "",
+            receptorNombre: detalle?.receptor?.nombre || "—",
+            receptorCargo: detalle?.receptor?.cargo || "",
+            asunto: detalle?.asunto || "",
+            descripcion: detalle?.descripcion || "",
+            observacion: detalle?.observacion || "",
+            fecha: detalle?.fecha
+              ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : "",
+            correlativoFinal: correlativo,
+            items: itemsEquipos,
+          },
+          config: c,
+          logos: { uriConadeh, uriInfo },
+          imagenesHTML,
+        });
+        return { html, nombre: `Acta de Entrega_${correlativo}.pdf` };
+      }
+      if (tipoNorm === "RETIRO") {
+        const itemsEquipos = (detalle?.items || []).map((eq) => ({
+          ...eq,
+          asignado_a: eq.asignado_a || detalle?.asignado_a || "",
+        }));
+        const html = generarHTMLRetiro({
+          data: {
+            emisorNombre: detalle?.emisor?.nombre || "—",
+            emisorCargo: detalle?.emisor?.cargo || "",
+            receptorNombre: detalle?.receptor?.nombre || "—",
+            receptorCargo: detalle?.receptor?.cargo || "",
+            asunto: detalle?.asunto || "",
+            descripcion: detalle?.descripcion || "",
+            observacion: detalle?.observacion || "",
+            fecha: detalle?.fecha
+              ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : "",
+            correlativoFinal: correlativo,
+            items: itemsEquipos,
+          },
+          config: c,
+          logos: { uriConadeh, uriInfo },
+          imagenesHTML,
+        });
+        return { html, nombre: `Acta de Retiro_${correlativo}.pdf` };
+      }
 
-      const fecha = detalle?.fecha
-        ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })
-        : new Date().toLocaleDateString("es-HN", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-
-      const orgDestinatario = detalle?.receptor?.unidad
-        ? `${receptorCargo} - ${detalle.receptor.unidad}`
-        : detalle?.receptor?.oficina
-          ? `${receptorCargo} - ${detalle.receptor.oficina}`
-          : receptorCargo;
-
-      const columnasTabla =
-        c?.columnasTabla ||
-        (tipoNorm === "ENTREGA" || tipoNorm === "RETIRO"
-          ? ["marca", "modelo", "serie", "asignado"]
-          : ["marca", "modelo", "serie"]);
-      const colLabels = {
-        marca: c?.labelMarca || "Marca",
-        modelo: c?.labelModelo || "Modelo",
-        serie: c?.labelSerie || "S/N",
-        asignado: c?.labelAsignado || "Asignado a",
-      };
-
-      const theadHTML = columnasTabla
-        .map(
-          (col) =>
-            `<th style="border:1px solid #555;padding:5px;background:#f0f0f0;font-size:10px;text-align:center">${colLabels[col]}</th>`,
-        )
-        .join("");
-
-      const itemsEquipos = detalle?.items || [];
-      const filasTabla = itemsEquipos
-        .map((eq) => {
-          const celdas = columnasTabla
-            .map((col) => {
-              if (col === "marca")
-                return `<td style="border:1px solid #555;padding:5px;font-size:10px;text-align:center">${eq.marca || "N/A"}</td>`;
-              if (col === "modelo")
-                return `<td style="border:1px solid #555;padding:5px;font-size:10px;text-align:center">${eq.modelo || "N/A"}</td>`;
-              if (col === "serie") {
-                return `<td style="border:1px solid #555;padding:5px;font-size:10px;text-align:center">S/N: ${eq.serie || "N/A"}<br/><span style="font-size:9px;color:#555;">
-                ${c?.mostrarNumFicha ? "Ficha: " + (eq.numFicha || "N/A") : ""}
-                ${c?.mostrarNumFicha && c?.mostrarNumInv ? " | " : ""}
-                ${c?.mostrarNumInv ? "Inv: " + (eq.numInv || "N/A") : ""}
-                </span>
-                </td> `;
-              }
-              if (col === "asignado")
-                return `<td style="border:1px solid #555;padding:5px;font-size:10px;text-align:center">${eq.asignado_a || "—"}</td>`;
-              return `<td style="border:1px solid #555;padding:5px;font-size:10px;text-align:center">—</td>`;
+      //MEMORANDUM
+      if (tipoNorm === "MEMORANDUM") {
+        const fecha = detalle?.fecha
+          ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
             })
-            .join("");
-          return `<tr>${celdas}</tr>`;
-        })
-        .join("");
+          : "";
+        const html = generarHTMLMemorandum({
+          data: {
+            emisorNombre: detalle?.emisor?.nombre || "—",
+            emisorCargo: detalle?.emisor?.cargo || "",
+            receptorNombre: detalle?.receptor?.nombre || "—",
+            receptorCargo: detalle?.receptor?.cargo || "",
+            asunto: detalle?.asunto || "",
+            fecha,
+            correlativoFinal: correlativo,
+            items: (detalle?.items || []).map((it) => ({
+              desc_MMDet: it.desc_MMDet,
+            })),
+          },
+          config: c,
+          logos: { uriConadeh, uriInfo },
+        });
+        return { html, nombre: `Memorándum_${correlativo}.pdf` };
+      }
 
-      const htmlContent = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"/>
+      //OFICIO
+      if (tipoNorm === "OFICIO") {
+        let emisorNombre = "Ing. Marco Aguilera";
+        let emisorCargo = "Jefe de Infotecnología";
+        try {
+          const raw = await AsyncStorage.getItem("oficio_emisor");
+          if (raw) {
+            const e = JSON.parse(raw);
+            emisorNombre = e.nombre || emisorNombre;
+            emisorCargo = e.cargo || emisorCargo;
+          }
+        } catch (e) {
+          console.warn("Error leyendo emisor de oficio:", e);
+        }
+
+        const fecha = detalle?.fecha
+          ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : new Date().toLocaleDateString("es-HN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            });
+
+        //Datos del destinatario
+        const receptorNombre =
+          detalle?.receptor?.nombre || detalle?.receptorNombre || "—";
+        const receptorCargo =
+          detalle?.receptor?.cargo || detalle?.receptorCargo || "";
+        const receptorTratamiento = detalle?.receptorTratamiento || "Señor(a)";
+
+        const apellido =
+          receptorNombre !== "—" ? receptorNombre.split(" ").slice(-1)[0] : "";
+
+        //Párrafos del cuerpo
+        const parrafosHTML = (detalle?.items || [])
+          .map((item) => `<p class="parrafo">${item.desc_OfiDet}</p>`)
+          .join("");
+
+        const colorLinea = c?.colorLinea || "#1eb9de";
+
+        const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Oficio ${correlativo}</title>
 <style>
+  * { box-sizing: border-box; max-width: 100%; }
   @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin:0; padding:0; }
-  body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; padding: 20mm 18mm; color: #000; }
-</style></head><body>
-  <table style="width:100%;border-collapse:collapse;border-bottom:2px solid ${colorLinea};padding-bottom:8px;margin-bottom:18px;">
-    <tr>
-      <td style="width:110px;text-align:left;vertical-align:middle">
-        <img src="${uriConadeh}" style="height:60px;object-fit:contain;" alt="CONADEH"/>
-      </td>
-      <td style="text-align:center;vertical-align:middle">
-        <p style="font-weight:bold;font-size:12px;text-transform:uppercase;margin:0;">Comisionado Nacional de los Derechos Humanos</p>
-        <p style="font-size:10px;margin:0;color:#444;">(CONADEH) — Honduras, C.A.</p>
-        <p style="font-weight:bold;font-size:13px;text-decoration:underline;margin-top:6px;text-transform:uppercase;">${config.nombre} N° ${correlativo}</p>
-      </td>
-      <td style="width:110px;text-align:right;vertical-align:middle">
-        <img src="${uriInfo}" style="height:60px;object-fit:contain;" alt="InfoTec"/>
-      </td>
-    </tr>
-  </table>
-  <table style="width:100%;margin-bottom:18px;border-collapse:collapse;">
-    ${receptorNombre !== "—" ? `<tr><td style="font-weight:bold;width:65px;padding:2px 4px;">Para:</td><td style="padding:2px 4px;"><strong>${receptorNombre}</strong><br/><span style="font-size:10px">${orgDestinatario}</span></td></tr>` : ""}
-    ${emisorNombre !== "—" ? `<tr><td style="font-weight:bold;width:65px;padding:2px 4px;">De:</td><td style="padding:2px 4px;"><strong>${emisorNombre}</strong><br/><span style="font-size:10px">${emisorCargo}</span></td></tr>` : ""}
-    ${asunto ? `<tr><td style="font-weight:bold;width:65px;padding:2px 4px;">Asunto:</td><td style="padding:2px 4px;">${asunto}</td></tr>` : ""}
-    ${descripcion ? `<tr><td style="font-weight:bold;width:65px;padding:2px 4px;">Descripción:</td><td style="padding:2px 4px;">${descripcion}</td></tr>` : ""}
-    <tr><td style="font-weight:bold;width:65px;padding:2px 4px;">Fecha:</td><td style="padding:2px 4px;">Tegucigalpa M.D.C., ${fecha}</td></tr>
-  </table>
-  <hr style="border:none;border-top:2px solid ${colorLinea};margin:14px 0;" />
-  ${filasTabla ? `<table style="width:100%;border-collapse:collapse;margin-bottom:15px;"><thead><tr>${theadHTML}</tr></thead><tbody>${filasTabla}</tbody></table>` : ""}
-  ${observacion ? `<p style="font-size:11px;margin:8px 0 20px 0;"><strong>Pd.</strong> ${observacion}</p>` : ""}
-  <table style="width:100%;margin-top:60px;border-collapse:collapse;">
-    <tr>
-      <td style="width:42%;text-align:center;border-top:1px solid #000;padding-top:6px;font-size:11px;">
-        <strong>${receptorNombre !== "—" ? receptorNombre : "___________"}</strong><br/>${receptorCargo}
-      </td>
-      <td style="width:16%;"></td>
-      <td style="width:42%;text-align:center;border-top:1px solid #000;padding-top:6px;font-size:11px;">
-        <strong>${emisorNombre !== "—" ? emisorNombre : "___________"}</strong><br/>${emisorCargo}
-      </td>
-    </tr>
-  </table>
-</body></html>`;
+  body {
+    font-family: Arial, sans-serif;
+    color: #000;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 25mm 20mm;
+    margin: 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  .titulo-oficio {
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    text-decoration: underline;
+    text-transform: uppercase;
+    margin-bottom: 30px;
+    letter-spacing: 0.5px;
+  }
+  .cuerpo {
+    font-size: 12px;
+    text-align: justify;
+    margin-bottom: 15px;
+    line-height: 1.7;
+  }
+  .destinatario {
+    margin-bottom: 20px;
+  }
+  .destinatario span {
+    display: block;
+  }
+  .dest-nombre {
+    font-weight: bold;
+  }
+  .asunto {
+    margin-bottom: 20px;
+  }
+  .parrafo {
+    margin-bottom: 14px;
+    text-align: justify;
+    line-height: 1.8;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .firma-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-top: 80px;
+  }
+  .firma-box {
+    width: 300px;
+    text-align: center;
+  }
+  .firma-line {
+    border-top: 1px solid #000;
+    margin-bottom: 5px;
+  }
+</style>
+</head>
+<body>
 
-      return {
-        html: htmlContent,
-        nombre: `${config.nombre}_${correlativo}.pdf`,
-      };
+<!-- ENCABEZADO -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+  <img src="${uriConadeh}" style="height:75px;object-fit:contain;" alt="CONADEH"/>
+  <div style="text-align:center;flex:1;padding:0 15px;">
+    <p style="font-weight:bold;font-size:13px;margin:0;text-transform:uppercase;">
+      Comisionado Nacional de los Derechos Humanos
+    </p>
+    <p style="font-size:11px;margin:5px 0 0 0;">(CONADEH) — Honduras, C.A.</p>
+  </div>
+  <img src="${uriInfo}" style="height:65px;object-fit:contain;" alt="InfoTecnología"/>
+</div>
+
+<!-- BARRA -->
+<div style="text-align:center;padding:7px 0;
+    border-top:2px solid ${colorLinea};
+    border-bottom:2px solid ${colorLinea};
+    margin-bottom:35px;
+    font-weight:bold;
+    font-size:12px;
+    text-transform:uppercase;">
+  UNIDAD DE INFOTECNOLOGÍA
+</div>
+
+<!-- TÍTULO -->
+<div class="titulo-oficio">
+  OFICIO ${correlativo}
+</div>
+
+<!-- DESTINATARIO -->
+<div class="destinatario">
+  <span>${receptorTratamiento}</span>
+  <span class="dest-nombre">${receptorNombre}</span>
+  <span>${receptorCargo}</span>
+  <span style="margin-top:10px;">${receptorTratamiento} ${apellido}:</span>
+</div>
+
+<!-- ASUNTO -->
+<div class="asunto">
+  <strong>Asunto:</strong> ${detalle?.asunto || ""}
+</div>
+
+<!-- CUERPO -->
+${parrafosHTML}
+
+<!-- DESPEDIDA -->
+<p class="cuerpo">Saludos cordiales,</p>
+
+<!-- FIRMA -->
+<div class="firma-wrapper">
+  <div class="firma-box">
+    <div class="firma-line"></div>
+    <strong>${emisorNombre}</strong><br/>
+    ${emisorCargo}
+  </div>
+</div>
+
+</body>
+</html>`;
+
+        return { html: htmlContent, nombre: `Oficio_${correlativo}.pdf` };
+      }
+      //PASE DE SALIDA
+      if (tipoNorm === "PASE_SALIDA") {
+        const html = generarHTMLPaseSalida({
+          data: {
+            emisorNombre: detalle?.emisor?.nombre || "—",
+            emisorCargo: detalle?.emisor?.cargo || "",
+            receptorNombre: detalle?.receptor?.nombre || "—",
+            receptorEmpresa: detalle?.receptor?.empresa || "",
+            motivo: detalle?.motivo || "",
+            correlativoFinal: correlativo,
+            items: (detalle?.items || []).map((eq) => ({
+              marca: eq.marca || "N/A",
+              modelo: eq.modelo || "N/A",
+              serie: eq.serie || "N/A",
+            })),
+          },
+          config: c,
+          logos: { uriConadeh, uriInfo },
+        });
+        return { html, nombre: `Pase de Salida_${correlativo}.pdf` };
+      }
+
+      //REPORTE
+      if (tipoNorm === "REPORTE") {
+        const fecha = detalle?.fecha
+          ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : "";
+        const html = generarHTMLReporte({
+          data: {
+            asignado: detalle?.asignado || "—",
+            asignadoCargo: detalle?.asignadoCargo || "Auxiliar Infotecnología",
+            correlativoFinal: correlativo,
+            fecha,
+            oficina: detalle?.oficina || "",
+            motivo: detalle?.motivo || "",
+            diagnostico: detalle?.diagnostico || "",
+            recomendaciones: detalle?.recomendaciones || "",
+            equipo: {
+              numFicha: detalle?.numFicha || "N/A",
+              numInv: detalle?.numInv || "N/A",
+              serie: detalle?.equipoSerie || "N/A",
+              marca: detalle?.equipoMarca || "N/A",
+              modelo: detalle?.equipoModelo || "N/A",
+              tipo: detalle?.equipoTipo || "",
+            },
+          },
+          config: c,
+          logos: { uriConadeh, uriInfo },
+          imagenesHTML,
+        });
+        return { html, nombre: `Reporte_${correlativo}.pdf` };
+      }
+
+      return null;
     } catch (err) {
       console.error("Error generando HTML:", err);
       return null;
@@ -400,20 +629,22 @@ export default function CorreoScreen() {
   //ENVIO DEL CORREO
   const enviarCorreo = async () => {
     if (!para.trim()) {
-      Alert.alert("Atención", "El campo Para es obligatorio.");
+      showAlert({
+        title: "Atención",
+        message: "El campo Para es obligatorio.",
+      });
       return;
     }
     if (seleccionados.length === 0) {
-      Alert.alert(
-        "Atención",
-        "Debes seleccionar al menos un documento para adjuntar.",
-      );
+      showAlert({
+        title: "Atención",
+        message: "Debes seleccionar al menos un documento para adjuntar.",
+      });
       return;
     }
 
     setGenerando(true);
     try {
-      // Generar HTMLs para todos los documentos seleccionados
       const adjuntos = [];
       for (const item of seleccionados) {
         const resultado = await generarHTMLParaDocumento(item);
@@ -463,7 +694,6 @@ export default function CorreoScreen() {
     }
   };
 
-  /* ── Render ── */
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bg }]}>
       <Header />
@@ -625,7 +855,6 @@ export default function CorreoScreen() {
           })}
         </ScrollView>
 
-        {/* Lista de documentos con altura limitada y scroll interno */}
         <View style={[styles.listaContainer, { borderColor: borderCol }]}>
           {cargandoHistorial ? (
             <ActivityIndicator color={highlightCol} style={{ marginTop: 12 }} />
@@ -738,7 +967,7 @@ export default function CorreoScreen() {
               styles.cancelBtn,
               { backgroundColor: surfaceBg, borderColor: borderCol },
             ]}
-            onPress={() => router.back()}
+            onPress={() => router.replace("/dashboard")}
           >
             <Text style={[styles.cancelBtnText, { color: subColor }]}>
               Cancelar
@@ -774,6 +1003,7 @@ export default function CorreoScreen() {
             )}
           </TouchableOpacity>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

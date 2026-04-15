@@ -17,14 +17,16 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { generarHTMLPaseSalida } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-// ── Paleta de colores por tema ────────────────────────────────────────────────
 const P = {
   dark: {
     bg: "#121212",
@@ -70,7 +72,6 @@ const P = {
   },
 };
 
-// ── Componentes reutilizables con tema ────────────────────────────────────────
 const ThemedInput = ({
   value,
   onChangeText,
@@ -140,7 +141,7 @@ const ThemedPicker = ({
   </View>
 );
 
-// ─── Constantes ────────────────────────────────────────────────────────────────
+//CONSTANTES
 const EMISOR_KEY = "pase_salida_emisor";
 const EMISOR_DEFAULT = {
   nombre: "Marco Antonio Aguilera",
@@ -152,16 +153,17 @@ export default function PaseSalidaScreen() {
   const router = useRouter();
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  // ── Emisor ──
+  //EMISOR
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [editandoEmisor, setEditandoEmisor] = useState(false);
 
-  // ── Receptor ──
+  //RECEPTOR
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
@@ -172,17 +174,16 @@ export default function PaseSalidaScreen() {
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
 
-  // ── Documento ──
+  //DOCUMENTO
   const [tituloDoc, setTituloDoc] = useState("Pase de Salida");
   const [motivoDesc, setMotivoDesc] = useState("");
   const [empManual, setEmpManual] = useState("");
 
-  // ── Equipos ──
+  // EQUIPOS
   const [equiposBD, setEquiposBD] = useState([]);
   const [equiposItems, setEquiposItems] = useState([]);
   const [equipoSelId, setEquipoSelId] = useState("");
 
-  // ── Meta ──
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -192,7 +193,6 @@ export default function PaseSalidaScreen() {
     year: "numeric",
   });
 
-  // ── Carga inicial ──
   useEffect(() => {
     const cargarTodo = async () => {
       try {
@@ -220,7 +220,7 @@ export default function PaseSalidaScreen() {
     cargarTodo();
   }, []);
 
-  // ── Cargar pase en modo vista ──
+  //cargar modo vista
   useEffect(() => {
     const cargarPase = async () => {
       if (!id) return;
@@ -262,22 +262,25 @@ export default function PaseSalidaScreen() {
   }, [id]);
 
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        if (window.confirm(texto))
-          botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
   const guardarEmisor = async () => {
@@ -326,23 +329,18 @@ export default function PaseSalidaScreen() {
     setEquiposItems(equiposItems.filter((i) => i._idTemporal !== idTemp));
 
   const cancelar = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
-    }
+      ],
+    );
   };
 
   const getNombreReceptor = () =>
@@ -351,12 +349,13 @@ export default function PaseSalidaScreen() {
       : tipoReceptor === TIPO_RECEPTOR.EMPLEADO
         ? empleadoSelNombre
         : receptorSelNombre;
-  const getEmpresaReceptor = () =>
-    isReadOnly
-      ? receptorEmpresa
-      : tipoReceptor === TIPO_RECEPTOR.EMPLEADO
-        ? empleadoCargo
-        : receptorEmpresa || empManual;
+  const getEmpresaReceptor = () => {
+    if (isReadOnly) return receptorEmpresa;
+    if (tipoReceptor === TIPO_RECEPTOR.EMPLEADO) {
+      return "CONADEH";
+    }
+    return receptorEmpresa || empManual;
+  };
 
   const guardarPase = async () => {
     if (!emisorNombre.trim()) {
@@ -394,6 +393,7 @@ export default function PaseSalidaScreen() {
       idReceptores: idRec,
       emp_PSEnc: getEmpresaReceptor(),
       motivo_PSEnc: motivoDesc,
+      titulo_PSEnc: tituloDoc,
       items: equiposItems.map((i) => ({ idEquipo: i.idEquipo })),
     };
 
@@ -445,107 +445,27 @@ export default function PaseSalidaScreen() {
         )
         .join("");
 
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Pase de Salida ${correlativoFinal}</title>
-<style>
-  @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: Arial, sans-serif;
-    color: #000;
-    font-size: 11.5px;
-    line-height: 1.6;
-    padding: 15mm 20mm 20mm 20mm;
-  }
-    
-  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  .header-table td { vertical-align: middle; }
-  .header-logo-left  { width: 120px; text-align: left; }
-  .header-logo-right { width: 120px; text-align: right; }
-  .header-center { text-align: center; }
-  .header-inst { font-weight: bold; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
-  .header-sub  { font-size: 9px; color: #333; }
-  .logo-conadeh { height: 65px; object-fit: contain; }
-  .logo-info    { height: 60px; object-fit: contain; }
-  .linea-header { border-top: 2px solid ${cPlantilla.colorLinea}; margin: 6px 0 3px 0; }
-  .titulo-paseSalida {
-    text-align: center;
-    font-weight: bold;
-    font-size: 14px;
-    text-decoration: underline;
-    text-transform: uppercase;
-    margin-bottom: 30px;
-    letter-spacing: 0.5px;
-  }
-  .cuerpo { font-size: 11.5px; text-align: justify; line-height: 1.85; margin-bottom: 22px; word-break: break-word; }
-  .equipo-table { width: 70%; border-collapse: collapse; margin: 0 auto 40px auto; }
-  .equipo-table th { border: 1px solid #555; padding: 5px 10px; text-align: left; font-size: 11px; background-color: #f5f5f5; }
-  .equipo-table td { border: 1px solid #555; padding: 5px 10px; font-size: 11px; }
-  .firmas-table { width: 100%; border-collapse: collapse; margin-top: 60px; }
-  .firma-celda { width: 45%; text-align: center; vertical-align: top; }
-  .firma-spacer { width: 10%; }
-  .firma-linea  { border-top: 1px solid #000; padding-top: 7px; display: inline-block; width: 200px; }
-  .firma-nombre { font-weight: bold; font-size: 11.5px; display: block; margin-bottom: 3px; }
-  .firma-cargo  { font-size: 10.5px; color: #333; display: block; }
-</style>
-</head>
-<body>
-  <table class="header-table">
-    <tr>
-      <td class="header-logo-left">
-        <img src="${uriConadeh}" class="logo-conadeh" alt="CONADEH"/>
-      </td>
-      <td class="header-center">
-        <div class="header-inst">Comisionado Nacional de los Derechos Humanos (CONADEH)</div>
-        <div class="header-sub">Honduras, C.A.</div>
-      </td>
-      <td class="header-logo-right">
-        <img src="${uriInfo}" class="logo-info" alt="Infotecnología"/>
-      </td>
-    </tr>
-  </table>
-  <div class="linea-header"></div>
-  <div class="titulo-paseSalida">
-    PASE DE SALIDA ${correlativoFinal}
-  </div>
-  <p class="cuerpo">
-    Por este medio se hace entrega al ${nombreRec || "—"} de la Empresa
-    ${empresaRec || "—"}, para que ${motivoDesc || "—"} que a continuación se describe:
-  </p>
-  <table class="equipo-table">
-    <thead>
-      <tr>
-        <th>Marca</th>
-        <th>Modelo</th>
-        <th>S/N</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filasEquipos}
-    </tbody>
-  </table>
-  <table class="firmas-table">
-    <tr>
-      <td class="firma-celda">
-        <div class="firma-linea">
-          <span class="firma-nombre">${nombreRec || "___________________"}</span>
-          <span class="firma-cargo">${empresaRec || ""}</span>
-        </div>
-      </td>
-      <td class="firma-spacer"></td>
-      <td class="firma-celda">
-        <div class="firma-linea">
-          <span class="firma-nombre">${emisorNombre || "___________________"}</span>
-          <span class="firma-cargo">${emisorCargo || ""}</span>
-        </div>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+      const parrafoPersonalizado = `Por este medio se hace entrega a ${nombreRec || "—"} de la Empresa ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`;
+
+      const htmlContent = generarHTMLPaseSalida({
+        data: {
+          emisorNombre,
+          emisorCargo,
+          receptorNombre: nombreRec,
+          receptorEmpresa: empresaRec,
+          motivo: motivoDesc,
+          titulo: tituloDoc,
+          parrafoIntro: parrafoPersonalizado,
+          correlativoFinal,
+          items: equiposItems.map((eq) => ({
+            marca: eq.marca || "N/A",
+            modelo: eq.modelo || "N/A",
+            serie: eq.serie || "N/A",
+          })),
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+      });
 
       if (Platform.OS === "web") {
         const win = window.open("", "_blank");
@@ -584,7 +504,6 @@ export default function PaseSalidaScreen() {
     }
   };
 
-  // ── Estilos dinámicos con useMemo ───────────────────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -636,7 +555,6 @@ export default function PaseSalidaScreen() {
           borderColor: c.border,
         },
         sinEmisorText: { fontSize: 13, color: c.accent, fontWeight: "600" },
-        // Toggle igual a actaRetiro
         toggleContainer: {
           flexDirection: "row",
           backgroundColor: c.toggleBg,
@@ -724,7 +642,7 @@ export default function PaseSalidaScreen() {
         },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -746,7 +664,6 @@ export default function PaseSalidaScreen() {
     [c],
   );
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -852,7 +769,7 @@ export default function PaseSalidaScreen() {
               </>
             ) : (
               <>
-                {/* TOGGLE IGUAL A actaRetiro */}
+                {/* TOGGLE*/}
                 <View style={styles.toggleContainer}>
                   <TouchableOpacity
                     style={[
@@ -1108,7 +1025,7 @@ export default function PaseSalidaScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -1131,6 +1048,7 @@ export default function PaseSalidaScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

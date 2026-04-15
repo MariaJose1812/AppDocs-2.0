@@ -26,9 +26,19 @@ exports.getOficinas = async (req, res) => {
     );
     res.json(rows);
   } catch (error) {
-    res
-      .status(500)
-      .json({ mensaje: "Error al obtener los datos de la oficina" });
+    res.status(500).json({ mensaje: "Error al obtener las oficinas" });
+  }
+};
+
+//solo nombres de oficina (Para reportes)
+exports.getOficinasUnicas = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT DISTINCT nomOficina FROM oficina WHERE nomOficina IS NOT NULL ORDER BY nomOficina",
+    );
+    res.json(rows.map((row) => ({ nomOficina: row.nomOficina })));
+  } catch (error) {
+    res.status(500).json({ mensaje: "Error al obtener las oficinas" });
   }
 };
 

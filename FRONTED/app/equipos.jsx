@@ -21,6 +21,7 @@ import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
@@ -500,7 +501,7 @@ export default function GestionEquiposScreen() {
           </View>
           <Text style={[styles.hint, { color: subColor }]}>
             Estas opciones aparecen en los selectores al crear un acta de
-            entrega.
+            entrega o de retiro.
           </Text>
 
           <View style={styles.catalogoGrid}>
@@ -655,6 +656,7 @@ export default function GestionEquiposScreen() {
             </>
           )}
         </View>
+        <Footer />
       </CustomScrollView>
 
       {/* Modales */}

@@ -38,14 +38,11 @@ api.interceptors.response.use(
         await AsyncStorage.removeItem("userToken");
 
         if (Platform.OS === "web") {
-          window.alert("Tu sesión ha caducado. Por favor ingresa de nuevo.");
-          router.replace("/login");
+          window.dispatchEvent(new CustomEvent("sessionExpired"));
         } else {
-          Alert.alert(
-            "Sesión expirada",
-            "Tu sesión ha caducado. Por favor ingresa de nuevo.",
-            [{ text: "OK", onPress: () => router.replace("/login") }],
-          );
+          if (global.__sessionExpiredCallback) {
+            global.__sessionExpiredCallback();
+          }
         }
       }
     }

@@ -13,6 +13,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import Navbar from "../components/navBar";
 import CustomScrollView from "../components/ScrollView";
 import Header from "../components/header";
+import Footer from "../components/footer";
 
 import { useTheme } from "../hooks/themeContext";
 import { Colors } from "../constants/theme";
@@ -132,6 +133,7 @@ export default function GenerarDocsScreen() {
             ))}
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

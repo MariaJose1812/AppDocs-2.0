@@ -20,12 +20,15 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { generarHTMLReporte } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
@@ -155,6 +158,7 @@ export default function ReportesScreen() {
   const router = useRouter();
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
@@ -170,9 +174,12 @@ export default function ReportesScreen() {
 
   // Campos del reporte
   const [oficina, setOficina] = useState("");
+  const [oficinasList, setOficinasList] = useState([]);
   const [motivo, setMotivo] = useState("");
   const [diagnostico, setDiagnostico] = useState("");
   const [recomendaciones, setRecomendaciones] = useState("");
+  const [busquedaEquipo, setBusquedaEquipo] = useState("");
+  const [equiposFiltrados, setEquiposFiltrados] = useState([]);
 
   // Meta del reporte (correlativo) y estado de impresión
   const [correlativo, setCorrelativo] = useState("");
@@ -180,17 +187,6 @@ export default function ReportesScreen() {
 
   const [imagenes, setImagenes] = useState([]); // Array de objetos { uri, base64 }
   const [subiendoImagen, setSubiendoImagen] = useState(false);
-
-  // Obtener la base URL de la API desde la configuración de Axios
-  const API_BASE_URL =
-    api.defaults.baseURL?.replace(/\/$/, "") || "http://localhost:3000";
-
-  const getFullImageUrl = (url) => {
-    if (!url) return "";
-    if (url.startsWith("http")) return url;
-    const normalizedUrl = url.startsWith("/") ? url : `/${url}`;
-    return `${API_BASE_URL}${normalizedUrl}`;
-  };
 
   const fechaHoy = new Date().toLocaleDateString("es-HN", {
     day: "numeric",
@@ -217,14 +213,31 @@ export default function ReportesScreen() {
           }
         }
 
-        const resEq = await api.get("/equipos");
+        const [resEq, resOfi] = await Promise.all([
+          api.get("/equipos"),
+          api.get("/catalogos/oficinas/unicas"),
+        ]);
         setEquiposBD(resEq.data);
+        setOficinasList(resOfi.data);
       } catch (err) {
         console.error("Error cargando datos:", err);
       }
     };
     cargarTodo();
   }, []);
+  // Filtrar equipos según búsqueda
+  useEffect(() => {
+    if (busquedaEquipo.trim() === "") {
+      setEquiposFiltrados([]);
+      return;
+    }
+    const filtrados = equiposBD.filter((eq) =>
+      `${eq.marca} ${eq.modelo} ${eq.serie}`
+        .toLowerCase()
+        .includes(busquedaEquipo.toLowerCase()),
+    );
+    setEquiposFiltrados(filtrados);
+  }, [busquedaEquipo, equiposBD]);
 
   //Cargar reporte en modo vista
   useEffect(() => {
@@ -236,10 +249,10 @@ export default function ReportesScreen() {
         if (!rp) return;
 
         setCorrelativo(rp.correlativo || "");
+        setOficina(rp.oficina || "");
         setMotivo(rp.motivo || "");
         setDiagnostico(rp.diagnostico || "");
         setRecomendaciones(rp.recomendaciones || "");
-        setOficina(rp.oficina || "");
 
         if (rp.equipoMarca || rp.equipoModelo || rp.equipoSerie) {
           setEquipoInfo({
@@ -251,24 +264,13 @@ export default function ReportesScreen() {
           });
         }
 
-        if (rp.imagenes) {
-          let imgs = rp.imagenes;
-
-          if (typeof imgs === "string") {
-            try {
-              imgs = JSON.parse(imgs);
-            } catch {
-              imgs = [];
-            }
-          }
-
-          setImagenes(
-            imgs.map((url) => ({
-              uri: url,
-              fileName: url.split("/").pop(),
-              type: "image/jpeg",
-            })),
-          );
+        if (rp.imagenes && rp.imagenes.length > 0) {
+          const imagenesFormateadas = rp.imagenes.map((url, idx) => ({
+            uri: url,
+            fileName: `img_${idx}.jpg`,
+            type: "image/jpeg",
+          }));
+          setImagenes(imagenesFormateadas);
         }
 
         const nomUsu = await AsyncStorage.getItem("nomUsu");
@@ -287,6 +289,30 @@ export default function ReportesScreen() {
 
   const seleccionarImagen = async () => {
     if (subiendoImagen) return;
+
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.multiple = false;
+      input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          const previewUri = URL.createObjectURL(file);
+          setImagenes((prev) => [
+            ...prev,
+            {
+              uri: previewUri,
+              file: file,
+              fileName: file.name,
+              type: file.type,
+            },
+          ]);
+        }
+      };
+      input.click();
+      return;
+    }
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -327,42 +353,40 @@ export default function ReportesScreen() {
   };
 
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        if (window.confirm(texto))
-          botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
   const cancelar = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
-    }
+      ],
+    );
   };
 
   // Guardar reporte
@@ -372,7 +396,7 @@ export default function ReportesScreen() {
       return;
     }
 
-    // Obtener ID de usuario - asegurar que sea número
+    // Obtener ID de usuario
     const idUsuariosRaw = await AsyncStorage.getItem("idUsuarios");
     const idUsuarios =
       idUsuariosRaw && idUsuariosRaw !== "null"
@@ -387,6 +411,15 @@ export default function ReportesScreen() {
       return;
     }
 
+    console.log(
+      "📸 Imágenes a enviar:",
+      imagenes.map((img) => ({
+        hasFile: !!img.file,
+        uri: img.uri,
+        fileName: img.fileName,
+      })),
+    );
+
     const formData = new FormData();
     formData.append("idEquipo", equipoSelId ? parseInt(equipoSelId) : "");
     formData.append("oficina", oficina);
@@ -396,28 +429,40 @@ export default function ReportesScreen() {
     formData.append("asignado_a", firmanteNombre || "");
     formData.append("idUsuarios", idUsuarios);
 
-    // Adjuntar imágenes
-    imagenes.forEach((img, idx) => {
-      // En Android a veces la URI necesita empezar estrictamente con file://
-      const fileUri =
-        Platform.OS === "android" && !img.uri.startsWith("file://")
-          ? `file://${img.uri}`
-          : img.uri;
-
-      formData.append("imagenes", {
-        uri: fileUri,
-        type: img.type || "image/jpeg",
-        name: img.fileName || `evidencia_${idx}.jpg`,
-      }); // <-- Eliminamos el "as any"
-    });
+    // Adjuntar imágenes (versión robusta para web)
+    for (let idx = 0; idx < imagenes.length; idx++) {
+      const img = imagenes[idx];
+      if (Platform.OS === "web") {
+        if (img.file) {
+          formData.append("imagenes", img.file, img.fileName);
+        } else if (img.uri && img.uri.startsWith("blob:")) {
+          const blob = await fetch(img.uri).then((r) => r.blob());
+          const file = new File(
+            [blob],
+            img.fileName || `evidencia_${idx}.jpg`,
+            { type: blob.type || "image/jpeg" },
+          );
+          formData.append("imagenes", file);
+        } else if (img.uri && img.uri.startsWith("http")) {
+          console.log("Imagen ya en Supabase, omitiendo:", img.uri);
+        }
+      } else {
+        // Móvil
+        const fileUri =
+          Platform.OS === "android" && !img.uri.startsWith("file://")
+            ? `file://${img.uri}`
+            : img.uri;
+        formData.append("imagenes", {
+          uri: fileUri,
+          type: img.type || "image/jpeg",
+          name: img.fileName || `evidencia_${idx}.jpg`,
+        });
+      }
+    }
 
     try {
       const response = await api.post("/actas/reporte", formData, {
-        headers: {
-          Accept: "application/json",
-          // IMPORTANTE: NO pongas 'Content-Type': 'multipart/form-data' aquí.
-          // Deja que Axios lo establezca automáticamente para que genere el "boundary" correcto.
-        },
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       const correlativoNuevo = response.data.correlativo || "";
@@ -484,9 +529,21 @@ export default function ReportesScreen() {
 
       const convertirImagenABase64 = async (uri) => {
         if (Platform.OS === "web") {
-          return uri; // usar directamente la URL
+          // Si ya es una URL http o blob, la devolvemos tal cual (el navegador la cargará en el PDF)
+          if (uri.startsWith("http") || uri.startsWith("blob:")) return uri;
+          // Si es dataURL, ya es base64
+          if (uri.startsWith("data:")) return uri;
+          // Fallback: intentar obtener como blob
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
         }
-
+        // Móvil: igual que antes
+        if (uri.startsWith("http")) return uri;
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
@@ -516,108 +573,22 @@ export default function ReportesScreen() {
   `;
       }
 
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Reporte ${correlativoFinal}</title>
-<style>
-  @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; color: #000; font-size: 11px; padding: 10mm 14mm 14mm 14mm; }
-
-  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  .header-table td { vertical-align: middle; }
-  .logo-left  { width: 100px; text-align: left; }
-  .logo-right { width: 100px; text-align: right; }
-  .header-center { text-align: center; }
-  .doc-title {
-    font-size: 16px; font-weight: bold; font-style: italic;
-    text-transform: uppercase; color: ${cPlantilla.colorLinea};
-    line-height: 1.4;
-  }
-  .logo-conadeh { height: 60px; object-fit: contain; }
-  .logo-info    { height: 55px; object-fit: contain; }
-  .linea-header { border-top: 3px solid ${cPlantilla.colorLinea}; margin: 4px 0 8px 0; }
-
-  .doc-table { width: 100%; border-collapse: collapse; border: 1px solid #888; }
-  .doc-table td, .doc-table th {
-    border: 1px solid #888;
-    padding: 5px 8px;
-    font-size: 11px;
-    vertical-align: top;
-  }
-  .row-header {
-    font-weight: bold;
-    text-transform: uppercase;
-    font-size: 11px;
-    background: #fff;
-    padding: 5px 8px;
-  }
-  .row-content {
-    min-height: 22px;
-    padding: 5px 8px;
-    font-size: 11px;
-    word-break: break-word;
-    white-space: pre-wrap;
-  }
-  .row-content-big {
-    height: 210px;
-    padding: 5px 8px;
-    font-size: 11px;
-    word-break: break-word;
-    white-space: pre-wrap;
-    vertical-align: top;
-  }
-  .firma-table { width: 100%; border-collapse: collapse; border: 1px solid #888; border-top: none; }
-  .firma-table td { border: 1px solid #888; padding: 6px 10px; font-size: 11px; width: 50%; }
-  .firma-cargo  { font-style: italic; }
-</style>
-</head>
-<body>
-  <table class="header-table">
-    <tr>
-      <td class="logo-left">
-        <img src="${uriConadeh}" class="logo-conadeh" alt="CONADEH"/>
-      </td>
-      <td class="header-center">
-        <div class="doc-title">Reporte de<br/>Daño de Equipo</div>
-      </td>
-      <td class="logo-right">
-        <img src="${uriInfo}" class="logo-info" alt="Infotecnología"/>
-      </td>
-    </tr>
-  </table>
-  <div class="linea-header"></div>
-
-  <table class="doc-table">
-    <tr><td style="width:50%">${correlativoFinal}</td><td style="width:50%">${fechaHoy}</td></tr>
-    <tr><td colspan="2"><strong>Oficina o Departamento:</strong> ${oficina || "—"}<\/td></tr>
-    <tr><td colspan="2" class="row-header">Características del Equipo:<\/td></tr>
-    <tr><td><strong>N/F:</strong> ${eq.numFicha}<\/td><td><strong>INV:</strong> ${eq.numInv}<\/td></tr>
-    <tr><td><strong>Service Tag / Serie:</strong> ${eq.serie}<\/td><td><strong>Tipo / Marca / Modelo:</strong> ${eq.tipo || ""} ${eq.marca} ${eq.modelo}<\/td></tr>
-    <tr><td colspan="2" class="row-header">Descripción del Reporte:<\/td></tr>
-    <tr><td colspan="2" class="row-content">${motivo || "&nbsp;"}<\/td></tr>
-    <tr><td colspan="2" class="row-header">Diagnóstico:<\/td></tr>
-    <tr><td colspan="2" class="row-content-big">${diagnostico || "&nbsp;"}<\/td></tr>
-    ${
-      recomendaciones
-        ? `
-
-
-    <tr><td colspan="2" class="row-header">Recomendaciones:<\/td></tr>
-    <tr><td colspan="2" class="row-content">${recomendaciones}<\/td></tr>`
-        : ""
-    }
-  </table>
-
-  ${imagenesHTML}
-
-  <table class="firma-table">
-    <tr><td class="firma-cargo">${firmanteCargo}.<\/td><td class="firma-nombre">(Firma)&nbsp;&nbsp;${firmanteNombre}<\/td></tr>
-  </table>
-</body>
-</html>`;
+      const htmlContent = generarHTMLReporte({
+        data: {
+          asignado: firmanteNombre,
+          asignadoCargo: firmanteCargo,
+          correlativoFinal,
+          fecha: fechaHoy,
+          oficina: oficina,
+          motivo: motivo,
+          diagnostico: diagnostico,
+          recomendaciones: recomendaciones,
+          equipo: eq,
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+        imagenesHTML: imagenesHTML,
+      });
 
       if (Platform.OS === "web") {
         const win = window.open("", "_blank");
@@ -744,7 +715,7 @@ export default function ReportesScreen() {
         },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -800,7 +771,6 @@ export default function ReportesScreen() {
 
           {/* CARD: Equipo y Oficina */}
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Equipo y Ubicación</Text>
             <View style={{ height: 12 }} />
 
             {isReadOnly ? (
@@ -821,44 +791,46 @@ export default function ReportesScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.label}>Seleccionar equipo (opcional):</Text>
-                <ThemedPicker
-                  selectedValue={String(equipoSelId)}
-                  onValueChange={(val) => {
-                    setEquipoSelId(val);
-                    const eq = equiposBD.find(
-                      (e) => String(e.idEquipo) === String(val),
-                    );
-                    setEquipoInfo(
-                      eq
-                        ? {
+                <Text style={styles.label}>Buscar equipo:</Text>
+                <ThemedInput
+                  value={busquedaEquipo}
+                  onChangeText={setBusquedaEquipo}
+                  placeholder="Escribe marca, modelo o serie..."
+                  colors={c}
+                  style={{ marginBottom: 4 }}
+                />
+                {equiposFiltrados.length > 0 && (
+                  <ScrollView style={{ maxHeight: 150, marginBottom: 8 }}>
+                    {equiposFiltrados.map((eq) => (
+                      <TouchableOpacity
+                        key={eq.idEquipo}
+                        style={{
+                          padding: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: c.border,
+                        }}
+                        onPress={() => {
+                          setEquipoSelId(eq.idEquipo);
+                          setEquipoInfo({
                             numFicha: eq.numFicha || "N/A",
                             numInv: eq.numInv || "N/A",
                             serie: eq.serie || "N/A",
                             marca: eq.marca || "N/A",
                             modelo: eq.modelo || "N/A",
                             tipo: eq.tipo || "",
-                          }
-                        : null,
-                    );
-                  }}
-                  colors={c}
-                >
-                  <Picker.Item
-                    label="Sin equipo / seleccione..."
-                    value=""
-                    color={c.textMuted}
-                  />
-                  {equiposBD.map((eq) => (
-                    <Picker.Item
-                      key={`eq-${eq.idEquipo}`}
-                      label={`${eq.marca} ${eq.modelo} — ${eq.serie || "S/N"}`}
-                      value={String(eq.idEquipo)}
-                      color={c.pickerColor}
-                    />
-                  ))}
-                </ThemedPicker>
-                {equipoInfo && (
+                          });
+                          setBusquedaEquipo("");
+                          setEquiposFiltrados([]);
+                        }}
+                      >
+                        <Text style={{ color: c.text }}>
+                          {eq.marca} {eq.modelo} — {eq.serie || "S/N"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+                {equipoInfo && !isReadOnly && (
                   <View style={styles.equipoInfoBox}>
                     <Text style={styles.equipoInfoMeta}>
                       N/F: {equipoInfo.numFicha} · INV: {equipoInfo.numInv} ·
@@ -870,14 +842,35 @@ export default function ReportesScreen() {
             )}
 
             <View style={{ height: 12 }} />
-            <Text style={styles.label}>Oficina / Departamento:</Text>
-            <ThemedInput
-              value={oficina}
-              onChangeText={setOficina}
-              placeholder="Ej. Oficina Central..."
-              editable={!isReadOnly}
-              colors={c}
-            />
+            <Text style={styles.label}>Oficina:</Text>
+            {isReadOnly ? (
+              <ThemedInput
+                value={oficina}
+                editable={false}
+                style={styles.readOnlyInput}
+                colors={c}
+              />
+            ) : (
+              <ThemedPicker
+                selectedValue={oficina}
+                onValueChange={setOficina}
+                colors={c}
+              >
+                <Picker.Item
+                  label="Seleccione una oficina..."
+                  value=""
+                  color={c.textMuted}
+                />
+                {oficinasList.map((ofi) => (
+                  <Picker.Item
+                    key={ofi.nomOficina}
+                    label={ofi.nomOficina}
+                    value={ofi.nomOficina}
+                    color={c.pickerColor}
+                  />
+                ))}
+              </ThemedPicker>
+            )}
           </View>
 
           {/* CARD: Descripción */}
@@ -1007,7 +1000,7 @@ export default function ReportesScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -1032,6 +1025,7 @@ export default function ReportesScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

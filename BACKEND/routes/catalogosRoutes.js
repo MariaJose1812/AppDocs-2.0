@@ -8,6 +8,7 @@ router.get('/empleados', catalogosController.getEmpleados);
 // Rutas para la oficina
 router.get('/oficinas', catalogosController.getOficinas);
 router.post('/oficinas', catalogosController.createOficina);
+router.get("/oficinas/unicas", catalogosController.getOficinasUnicas);
 
 // Rutas para el equipo
 router.get('/tiposEquipo', catalogosController.getTiposEquipo);

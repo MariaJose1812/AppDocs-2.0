@@ -6,12 +6,14 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:dev": "cross-env NODE_ENV=development electron-builder --win",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "electron": "^40.2.1",
     "electron-builder": "^26.7.0"
   }

@@ -11,16 +11,22 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
+import { Image, ScrollView as RNScrollView } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Picker } from "@react-native-picker/picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { generarHTMLRetiro } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
@@ -66,7 +72,6 @@ const P = {
   },
 };
 
-// ── Componentes reutilizables con tema ─────────────────────────────
 const ThemedInput = ({
   value,
   onChangeText,
@@ -141,6 +146,7 @@ export default function ActaRetiroScreen() {
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
   const tipoActa = "RETIRO";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
@@ -190,7 +196,10 @@ export default function ActaRetiroScreen() {
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
 
-  // ── Carga de datos ───────────────────────────────────────────────
+  const [imagenes, setImagenes] = useState([]);
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+
+  //CARGAR DATOS
   useEffect(() => {
     const cargarDatosActa = async () => {
       if (id) {
@@ -234,9 +243,20 @@ export default function ActaRetiroScreen() {
             }));
             setItems(itemsMapeados);
           }
+          if (acta.imagenes && acta.imagenes.length > 0) {
+            const imagenesFormateadas = acta.imagenes.map((url, idx) => ({
+              uri: url, // URL pública de Supabase
+              fileName: `img_${idx}.jpg`,
+              type: "image/jpeg",
+            }));
+            setImagenes(imagenesFormateadas);
+          }
         } catch (error) {
           console.error("Error trayendo acta:", error);
-          Alert.alert("Error", "No se pudo cargar el detalle del acta");
+          showAlert({
+            title: "Error",
+            message: "No se pudo cargar el detalle del acta",
+          });
         }
       }
     };
@@ -274,7 +294,7 @@ export default function ActaRetiroScreen() {
     cargarCatalogos();
   }, []);
 
-  // ── Unidades y cargos (igual que actaEntrega) ─────────────────────
+  //UNIDADES Y CARGOS
   useEffect(() => {
     if (oficinaSel) {
       const filtradas = oficinasBD.filter(
@@ -309,7 +329,7 @@ export default function ActaRetiroScreen() {
     }
   }, [oficinaSel, unidadSel, oficinasBD]);
 
-  // ── Filtro de empleados por oficina ──────────────────────────────
+  //FILTRO EMPLEADOS
   useEffect(() => {
     if (!oficinaSel) {
       setEmpleadosFiltrados([]);
@@ -323,7 +343,7 @@ export default function ActaRetiroScreen() {
       .catch((err) => console.error("Error filtrando empleados:", err));
   }, [oficinaSel]);
 
-  // ── Filtro de marcas por tipo de equipo ───────────────────────────
+  // FILTRO MARCAS
   useEffect(() => {
     if (!tempTipo) {
       setMarcasFiltradas([]);
@@ -345,7 +365,7 @@ export default function ActaRetiroScreen() {
       .finally(() => setCargandoMarcas(false));
   }, [tempTipo]);
 
-  // ── Filtro de modelos por tipo y marca ────────────────────────────
+  //FILTRO MODELOS
   useEffect(() => {
     if (!tempTipo || !tempMarca) {
       setModelosFiltrados([]);
@@ -365,24 +385,26 @@ export default function ActaRetiroScreen() {
       .finally(() => setCargandoModelos(false));
   }, [tempTipo, tempMarca]);
 
-  // ── Funciones auxiliares (mostrarAlerta, agregarItem, eliminarItem, cancelarActa) ──
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        const confirmado = window.confirm(texto);
-        if (confirmado) botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
   const agregarItem = () => {
@@ -422,34 +444,88 @@ export default function ActaRetiroScreen() {
   };
 
   const cancelarActa = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
+      ],
+    );
+  };
+
+  const seleccionarImagen = async () => {
+    if (subiendoImagen) return;
+
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.multiple = false;
+      input.onchange = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          // Crear una URL temporal para la vista previa
+          const previewUri = URL.createObjectURL(file);
+          setImagenes((prev) => [
+            ...prev,
+            {
+              uri: previewUri,
+              file: file,
+              fileName: file.name,
+              type: file.type,
+            },
+          ]);
+        }
+      };
+      input.click();
+      return;
+    }
+
+    // Para móviles
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      mostrarAlerta("Permiso requerido", "Necesitamos acceso a tu galería.");
+      return;
+    }
+    setSubiendoImagen(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaType.Images,
+        allowsEditing: true,
+        quality: 0.8,
+        base64: false,
+      });
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        setImagenes((prev) => [
+          ...prev,
+          {
+            uri: asset.uri,
+            fileName: asset.fileName || `img_${Date.now()}.jpg`,
+            type: asset.mimeType || "image/jpeg",
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error detallado:", error);
+      mostrarAlerta("Error", "No se pudo seleccionar la imagen.");
+    } finally {
+      setSubiendoImagen(false);
     }
   };
 
-  // ── Guardar acta ─────────────────────────────────────────────────
-  const generarActa = async () => {
-    let asignadoA = "";
-    if (tipoDestinatario === "EMPLEADO") {
-      asignadoA = unidadSel || oficinaSel || "-";
-    } else {
-      asignadoA = receptorEmpresa || "-";
-    }
+  const removerImagen = (index) => {
+    setImagenes((prev) => prev.filter((_, i) => i !== index));
+  };
 
+  // GUARDAR ACTA
+  const generarActa = async () => {
+    // Validaciones
     if (
       tipoDestinatario === "EMPLEADO" &&
       (!empleadoSelId || !empleadoSelNombre)
@@ -469,44 +545,63 @@ export default function ActaRetiroScreen() {
       return;
     }
 
-    const payload = {
-      tipo: tipoActa,
-      idEmpleados:
-        tipoDestinatario === "EMPLEADO" ? parseInt(empleadoSelId) : null,
-      idReceptores:
-        tipoDestinatario === "RECEPTOR" ? parseInt(receptorSelId) : null,
-      asunto: tempDesc,
-      descripcion: tempDescripcion,
-      observacion: tempObs,
-      items: items.map((item) => ({
-        idEquipo: null,
-        tipo: item.tipo,
-        marca: item.marca,
-        modelo: item.modelo,
-        serie: item.serie,
-        numFicha: item.numFicha,
-        numInv: item.numInv,
-        asignado_a: asignadoA,
-      })),
-    };
+    const formData = new FormData();
+    formData.append("tipo", tipoActa);
+    formData.append(
+      "idEmpleados",
+      tipoDestinatario === "EMPLEADO" ? parseInt(empleadoSelId) : "",
+    );
+    formData.append(
+      "idReceptores",
+      tipoDestinatario === "RECEPTOR" ? parseInt(receptorSelId) : "",
+    );
+    formData.append("asunto", tempDesc);
+    formData.append("descripcion", tempDescripcion);
+    formData.append("observacion", tempObs);
+    formData.append(
+      "items",
+      JSON.stringify(
+        items.map((item) => ({
+          tipo: item.tipo,
+          marca: item.marca,
+          modelo: item.modelo,
+          serie: item.serie,
+          numFicha: item.numFicha,
+          numInv: item.numInv,
+          asignado_a:
+            tipoDestinatario === "EMPLEADO"
+              ? unidadSel || oficinaSel || "-"
+              : receptorEmpresa || "-",
+        })),
+      ),
+    );
+
+    // Adjuntar imágenes
+    imagenes.forEach((img, idx) => {
+      if (Platform.OS === "web" && img.file) {
+        // Web
+        formData.append("imagenes", img.file, img.fileName);
+      } else {
+        // Móvil
+        const fileUri =
+          Platform.OS === "android" && !img.uri.startsWith("file://")
+            ? `file://${img.uri}`
+            : img.uri;
+        formData.append("imagenes", {
+          uri: fileUri,
+          type: img.type || "image/jpeg",
+          name: img.fileName || `evidencia_${idx}.jpg`,
+        });
+      }
+    });
 
     try {
-      const response = await api.post("/actas/procesadas", payload);
+      const response = await api.post("/actas/procesadas", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       const actaGuardada = response.data;
       const correlativoNuevo = actaGuardada.correlativo || "";
       setCorrelativo(correlativoNuevo);
-
-      const historialKey = "historialActas";
-      const historialExistente = await AsyncStorage.getItem(historialKey);
-      const historialArray = historialExistente
-        ? JSON.parse(historialExistente)
-        : [];
-      historialArray.push({
-        ...actaGuardada,
-        fechaGuardado: new Date().toISOString(),
-      });
-      await AsyncStorage.setItem(historialKey, JSON.stringify(historialArray));
-
       await generarPDF(correlativoNuevo);
       router.replace("/dashboard");
     } catch (error) {
@@ -525,10 +620,8 @@ export default function ActaRetiroScreen() {
       mostrarAlerta("Atención", "Guarda el acta para generar el PDF");
       return;
     }
-
     const nombreDestinatario =
       tipoDestinatario === "EMPLEADO" ? empleadoSelNombre : receptorSelNombre;
-
     if (!nombreDestinatario) {
       mostrarAlerta("Atención", "Falta el nombre del destinatario.");
       return;
@@ -542,14 +635,8 @@ export default function ActaRetiroScreen() {
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
 
-      const cargoDestinatario =
-        tipoDestinatario === "EMPLEADO" ? cargoSel : receptorCargo;
-      const orgDestinatario =
-        tipoDestinatario === "EMPLEADO"
-          ? unidadSel
-            ? `${cargoSel} - ${unidadSel}`
-            : `${cargoSel} - ${oficinaSel}`
-          : `${receptorCargo} - ${receptorEmpresa}`;
+      const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
+        await Promise.all([getLogoURIs(), obtenerPlantillaActiva("RETIRO")]);
 
       const fechaActual = new Date().toLocaleDateString("es-HN", {
         year: "numeric",
@@ -557,173 +644,66 @@ export default function ActaRetiroScreen() {
         day: "numeric",
       });
 
-      const [{ conadeh: uriConadeh, info: uriInfo }, c] = await Promise.all([
-        getLogoURIs(),
-        obtenerPlantillaActiva("RETIRO"),
-      ]);
+      const cargoDestinatario =
+        tipoDestinatario === "EMPLEADO" ? cargoSel : receptorCargo;
+      const asignadoA =
+        tipoDestinatario === "EMPLEADO"
+          ? unidadSel || oficinaSel || "-"
+          : receptorEmpresa || "-";
 
-      const columnasRetiro = c.columnasTabla;
-
-      const colLabels = {
-        marca: c.labelMarca,
-        modelo: c.labelModelo,
-        serie: c.labelSerie,
-        asignado: c.labelAsignado,
+      const convertirImagenABase64 = async (uri) => {
+        if (Platform.OS === "web") {
+          if (uri.startsWith("http") || uri.startsWith("blob:")) return uri;
+          if (uri.startsWith("data:")) return uri;
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+        }
+        // Móvil
+        if (uri.startsWith("http")) return uri;
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        return `data:image/jpeg;base64,${base64}`;
       };
 
-      const theadHTML = columnasRetiro
-        .map((col) => `<th>${colLabels[col] || col}</th>`)
-        .join("");
-
-      const filasTabla = items
-        .map((item) => {
-          const celdas = columnasRetiro
-            .map((col) => {
-              if (col === "marca") return `<td>${item.marca || "N/A"}</td>`;
-              if (col === "modelo") return `<td>${item.modelo || "N/A"}</td>`;
-              if (col === "serie") {
-                return `
-            <td>
-              S/N: ${item.serie || "N/A"}<br/>
-              <span style="font-size:10px;color:#555;">
-                ${c.mostrarNumFicha ? "Ficha: " + (item.numFicha || "N/A") : ""}
-                ${c.mostrarNumFicha && c.mostrarNumInv ? " | " : ""}
-                ${c.mostrarNumInv ? "Inv: " + (item.numInv || "N/A") : ""}
-              </span>
-            </td>
-          `;
-              }
-              if (col === "asignado")
-                return `<td>${item.asignado_a || "—"}</td>`;
-              return `<td>-</td>`;
-            })
-            .join("");
-          return `<tr>${celdas}</tr>`;
-        })
-        .join("");
-
-      const observacionHTML =
-        c.mostrarObservacion && tempObs
-          ? `<p class="observacion"><strong>Pd.</strong> ${tempObs}</p>`
-          : "";
-
-      const htmlContent = `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8"/>
-    <title>Acta de Retiro</title>
-    <style>
-      @page { size: A4 portrait; margin: 0; }
-      body { font-family: Arial, sans-serif; color: #000; font-size: 11px;
-             line-height: 1.5; padding: 20mm 18mm; }
-      .divider { border: none; border-top: 2px solid ${c.colorLinea}; margin: 14px 0; }
-      .header { display: flex; justify-content: space-between; align-items: center;
-                border-bottom: 2px solid ${c.colorLinea}; padding-bottom: 8px; margin-bottom: 18px; }
-      .logo-conadeh { height: 65px; object-fit: contain; }
-      .logo-info    { height: 60px; object-fit: contain; }
-      .title-container { text-align: center; flex: 1; padding: 0 12px; }
-      .title { font-weight: bold; font-size: 12px; margin: 0 0 2px 0;
-               text-transform: uppercase; letter-spacing: 0.3px; }
-      .subtitle { font-size: 10px; margin: 0; color: #222; }
-      .acta-num { font-weight: bold; font-size: 13px; text-decoration: underline;
-                  margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-      .info-table { width: 100%; margin-bottom: 18px; border-collapse: collapse; }
-      .info-table td { padding: 2px 4px; vertical-align: top; font-size: 11px; }
-      .info-label { font-weight: bold; width: 65px; white-space: nowrap; padding-right: 8px; }
-      .info-value { padding-left: 4px; word-break: break-word; overflow-wrap: break-word; }
-      .info-name { font-weight: bold; display: block; }
-      .info-role { display: block; font-size: 10.5px; color: #222; }
-      .paragraph { font-size: 11px; text-align: justify; margin: 0 0 16px 0;
-                   line-height: 1.6; word-break: break-word; overflow-wrap: break-word; }
-      .equipo-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-      .equipo-table th { background-color: #f0f0f0; font-weight: bold;
-                         border: 1px solid #555; padding: 5px 6px;
-                         text-align: center; font-size: 10px; text-transform: uppercase; }
-      .equipo-table td { border: 1px solid #555; padding: 5px 6px;
-                         text-align: center; font-size: 10px; }
-      .observacion { font-size: 11px; margin: 8px 0 20px 0; }
-      .firmas-table { width: 100%; margin-top: 65px; border-collapse: collapse; }
-      .firma-cell { width: 42%; text-align: center; border-top: 1px solid #000;
-                    padding-top: 6px; font-size: 11px; }
-      .firma-spacer { width: 16%; }
-    </style>
-  </head>
-  <body>
-    <div class="header">
-      <img src="${uriConadeh}" class="logo-conadeh" alt="CONADEH"/>
-      <div class="title-container">
-        <p class="title">Comisionado Nacional de los Derechos Humanos</p>
-        <p class="subtitle">(CONADEH)</p>
-        <p class="subtitle">Honduras, C.A.</p>
-        <p class="acta-num">Acta de Retiro N° ${correlativoFinal}</p>
-      </div>
-      <img src="${uriInfo}" class="logo-info" alt="Infotecnología"/>
-    </div>
-
-    <table class="info-table">
-      <tr>
-        <td class="info-label">Para:</td>
-        <td class="info-value">
-          <span class="info-name">${nombreDestinatario}</span>
-          <span class="info-role">${orgDestinatario}</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="info-label">De:</td>
-        <td class="info-value">
-          <span class="info-name">${usuarioLogueado || "Infotecnología"}</span>
-          <span class="info-role">${cargoLogueado || "Soporte Técnico"}</span>
-        </td>
-      </tr>
-      <tr>
-        <td class="info-label">Asunto:</td>
-        <td class="info-value">${tempDesc || "Retiro de Equipo Tecnológico"}</td>
-      </tr>
-      ${
-        c.mostrarDescripcion && tempDescripcion
-          ? `
-      <tr>
-        <td class="info-label">Descripción:</td>
-        <td class="info-value">${tempDescripcion}</td>
-      </tr>`
-          : ""
+      let imagenesHTML = "";
+      if (imagenes.length > 0) {
+        const imgsBase64 = await Promise.all(
+          imagenes.map(async (img) => ({
+            base64: await convertirImagenABase64(img.uri),
+          })),
+        );
+        imagenesHTML = `
+          <div style="margin-top:20px;page-break-inside:avoid;">
+            <p style="font-weight:bold;font-size:11px;margin-bottom:8px;">Evidencias fotográficas:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:10px;">
+              ${imgsBase64.map((img) => `<img src="${img.base64}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`).join("")}
+            </div>
+          </div>`;
       }
-      <tr>
-        <td class="info-label">Fecha:</td>
-        <td class="info-value">Tegucigalpa M.D.C., ${fechaActual}</td>
-      </tr>
-    </table>
 
-    <hr class="divider"/>
-
-    ${
-      c.mostrarParrafoIntro && c.textoIntro
-        ? `<p class="paragraph">${c.textoIntro}</p>`
-        : ""
-    }
-
-    <table class="equipo-table">
-      <thead><tr>${theadHTML}</tr></thead>
-      <tbody>${filasTabla}</tbody>
-    </table>
-
-    ${observacionHTML}
-
-    <table class="firmas-table">
-      <tr>
-        <td class="firma-cell">
-          <strong>${nombreDestinatario}</strong><br/>
-          ${cargoDestinatario || "___________________"}
-        </td>
-        <td class="firma-spacer"></td>
-        <td class="firma-cell">
-          <strong>${usuarioLogueado || "_____________________"}</strong><br/>
-          ${cargoLogueado || "Soporte Técnico"}
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+      const htmlContent = generarHTMLRetiro({
+        data: {
+          emisorNombre: usuarioLogueado || "",
+          emisorCargo: cargoLogueado || "",
+          receptorNombre: nombreDestinatario,
+          receptorCargo: cargoDestinatario,
+          asunto: tempDesc,
+          descripcion: tempDescripcion,
+          observacion: tempObs,
+          fecha: fechaActual,
+          correlativoFinal,
+          items: items.map((item) => ({ ...item, asignado_a: asignadoA })),
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+        imagenesHTML: imagenesHTML,
+      });
 
       if (Platform.OS === "web") {
         const win = window.open("", "_blank");
@@ -753,14 +733,12 @@ export default function ActaRetiroScreen() {
         }
       }
     } catch (err) {
-      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);
     }
   };
 
-  // ── Estilos dinámicos (con useMemo) ──────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -838,7 +816,7 @@ export default function ActaRetiroScreen() {
         cancelBtnText: { color: c.textMuted, fontSize: 16, fontWeight: "700" },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -851,7 +829,6 @@ export default function ActaRetiroScreen() {
     [c],
   );
 
-  // ── Render ────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -1354,6 +1331,71 @@ export default function ActaRetiroScreen() {
             </View>
           )}
 
+          {/* CARD: Evidencias — agregar antes de buttonsContainer */}
+          {(imagenes.length > 0 || !isReadOnly) && (
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Evidencias</Text>
+              {!isReadOnly && (
+                <TouchableOpacity
+                  style={[
+                    styles.saveBtn,
+                    { backgroundColor: "#09528e", marginTop: 8 },
+                  ]}
+                  onPress={seleccionarImagen}
+                  disabled={subiendoImagen}
+                >
+                  <MaterialCommunityIcons
+                    name="camera"
+                    size={20}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.saveBtnText}>
+                    {subiendoImagen ? "Cargando..." : "Adjuntar imagen"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {imagenes.length > 0 && (
+                <RNScrollView
+                  horizontal
+                  style={{ marginTop: 12 }}
+                  showsHorizontalScrollIndicator={false}
+                >
+                  {imagenes.map((img, idx) => (
+                    <View
+                      key={idx}
+                      style={{ marginRight: 10, position: "relative" }}
+                    >
+                      <Image
+                        source={{ uri: img.uri }}
+                        style={{ width: 100, height: 100, borderRadius: 8 }}
+                      />
+                      {!isReadOnly && (
+                        <TouchableOpacity
+                          style={{
+                            position: "absolute",
+                            top: -8,
+                            right: -8,
+                            backgroundColor: c.danger,
+                            borderRadius: 12,
+                            padding: 2,
+                          }}
+                          onPress={() => removerImagen(idx)}
+                        >
+                          <MaterialCommunityIcons
+                            name="close"
+                            size={16}
+                            color="#fff"
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </RNScrollView>
+              )}
+            </View>
+          )}
+
           <View style={styles.card}>
             <Text style={styles.label}>Observación:</Text>
             <ThemedInput
@@ -1375,7 +1417,7 @@ export default function ActaRetiroScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -1398,6 +1440,7 @@ export default function ActaRetiroScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

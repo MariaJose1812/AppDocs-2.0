@@ -1,5 +1,6 @@
 //recibir datos, buscar cargos actuales, guardar todo
 const db = require("../config/db");
+const { subirImagen } = require("../utils/supabaseStorage");
 
 // METODO POST ACTA DE ENTREGA Y RETIRO
 exports.procesarActa = async (req, res) => {
@@ -18,12 +19,28 @@ exports.procesarActa = async (req, res) => {
   try {
     await connection.beginTransaction();
 
+    //Subir imágenes a Supabase 
+    let urlsImagenes = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const url = await subirImagen(
+          file.buffer,
+          file.originalname,
+          file.mimetype,
+          tipo.toLowerCase(), 
+        );
+        urlsImagenes.push(url);
+      }
+    }
+
+    //Obtener datos del usuario emisor
     const [userData] = await connection.query(
       "SELECT nomUsu, cargoUsu FROM usuarios WHERE idUsuarios = ?",
       [idUsuarios],
     );
     const emisor = userData[0] || { nomUsu: "Desconocido", cargoUsu: "S/C" };
 
+    //Obtener datos del receptor 
     let nombreReceptor = "Desconocido";
     let cargoReceptor = "S/C";
     let oficinaReceptor = "";
@@ -33,12 +50,11 @@ exports.procesarActa = async (req, res) => {
     if (idEmpleados) {
       const [empData] = await connection.query(
         `SELECT e.nomEmp, o.cargoOfi, o.nomOficina, o.unidad
-     FROM empleados e
-     JOIN oficina o ON e.idOficina = o.idOficina
-     WHERE e.idEmpleados = ?`,
+         FROM empleados e
+         JOIN oficina o ON e.idOficina = o.idOficina
+         WHERE e.idEmpleados = ?`,
         [idEmpleados],
       );
-
       if (empData.length > 0) {
         nombreReceptor = empData[0].nomEmp;
         cargoReceptor = empData[0].cargoOfi;
@@ -57,6 +73,7 @@ exports.procesarActa = async (req, res) => {
       }
     }
 
+    //Generar correlativo
     const anioActual = new Date().getFullYear();
     const prefijo = "IT";
     let nuevoCorrelativo = "";
@@ -65,40 +82,35 @@ exports.procesarActa = async (req, res) => {
 
     const obtenerOCrearEquipo = async (item) => {
       const serieNorm = (item.serie || "S/N").trim();
- 
-      // Evita duplicar por número de serie
       const [existente] = await connection.query(
-       "SELECT idEquipo FROM equipo WHERE serie = ? LIMIT 1",
+        "SELECT idEquipo FROM equipo WHERE serie = ? LIMIT 1",
         [serieNorm],
       );
- 
-      if (existente.length > 0) {
-        return existente[0].idEquipo;
-      }
- 
+      if (existente.length > 0) return existente[0].idEquipo;
+
       const [resNuevo] = await connection.query(
         `INSERT INTO equipo (tipo, marca, modelo, serie, numFich, numInv)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
-          item.tipo   || "No especificado",
-          item.marca  || "No especificada",
+          item.tipo || "No especificado",
+          item.marca || "No especificada",
           item.modelo || "No especificado",
           serieNorm,
-          item.numFicha || item.numFich || item.numeroFicha || null,
-          item.numInv   || item.numeroInventario            || null,
+          item.numFicha || item.numFich || null,
+          item.numInv || null,
         ],
       );
       return resNuevo.insertId;
     };
 
-    //RETIRO
+    const imagenesJSON = JSON.stringify(urlsImagenes);
+
     if (tipo === "RETIRO") {
       const [ultimaActa] = await connection.query(
         `SELECT correla_AREnc FROM acta_retiro_encabezado 
-                 WHERE correla_AREnc LIKE ? ORDER BY idActa_RetiroEnc DESC LIMIT 1`,
+         WHERE correla_AREnc LIKE ? ORDER BY idActa_RetiroEnc DESC LIMIT 1`,
         [`${prefijo}-${anioActual}-%`],
       );
-
       let siguienteNumero = 1;
       if (ultimaActa.length > 0) {
         const partes = ultimaActa[0].correla_AREnc.split("-");
@@ -107,77 +119,53 @@ exports.procesarActa = async (req, res) => {
       nuevoCorrelativo = `${prefijo}-${anioActual}-${String(siguienteNumero).padStart(3, "0")}`;
 
       const queryEncabezado = `
-                INSERT INTO acta_retiro_encabezado 
-                (correla_AREnc, idUsuarios, idReceptores, idEmpleados, asunto_AREnc, fech_AREnc, est_AREnc) 
-                VALUES (?, ?, ?, ?, ?, NOW(), 'Borrador')`;
-
+        INSERT INTO acta_retiro_encabezado 
+        (correla_AREnc, idUsuarios, idReceptores, idEmpleados, asunto_AREnc, fech_AREnc, est_AREnc, img_AREnc) 
+        VALUES (?, ?, ?, ?, ?, NOW(), 'Borrador', ?)
+      `;
       const [resEncabezado] = await connection.query(queryEncabezado, [
         nuevoCorrelativo,
         idUsuarios,
         idReceptores || null,
         idEmpleados || null,
         asunto,
+        imagenesJSON,
       ]);
       idNuevoEncabezado = resEncabezado.insertId;
 
-      if (items && items.length > 0) {
+      // Detalle
+      if (items && items.length) {
         const valoresDetalle = [];
-
-        for (const item of items) {
-          const idEquipoActual = item.idEquipo || await obtenerOCrearEquipo(item);
-
-          //SI EL EQUIPO ES NUEVO
-          if (!idEquipoActual) {
-            const queryNuevoEquipo = `
-            INSERT INTO equipo (tipo, marca, modelo, serie, numFich, numInv) 
-            VALUES (?, ?, ?, ?, ?, ?)`;
-            const [resNuevoEquipo] = await connection.query(queryNuevoEquipo, [
-              item.tipo || "No especificado",
-              item.marca || "No especificada",
-              item.modelo || "No especificado",
-              item.serie || "S/N",
-              item.numFich || item.numFicha || null,
-              item.numInv || null,
-            ]);
-
-            idEquipoActual = resNuevoEquipo.insertId;
-          }
-
-          const descripcionFinal = descripcion || "";
-
-          //GUARDA EN EL DETALLE USANDO EL ID
+        for (const item of JSON.parse(items)) {
+          const idEquipoActual = await obtenerOCrearEquipo(item);
           valoresDetalle.push([
             idNuevoEncabezado,
-            descripcionFinal,
+            descripcion || "",
             observacion || "",
             item.asignado_a || "",
             idEquipoActual,
           ]);
-
           itemsGuardados.push({
             idEquipo: idEquipoActual,
-            descripcion: descripcionFinal,
-            observacion: item.observacion,
+            descripcion,
+            observacion,
           });
         }
-
-        if (valoresDetalle.length > 0) {
+        if (valoresDetalle.length) {
           await connection.query(
             `INSERT INTO acta_retiro_detalle 
-                        (idActa_RetiroEnc, desc_ARDet, observa_ARDet, asignado_a, idEquipo) VALUES ?`,
+             (idActa_RetiroEnc, desc_ARDet, observa_ARDet, asignado_a, idEquipo) VALUES ?`,
             [valoresDetalle],
           );
         }
       }
-
-      // ENTREGA
     } else {
+      // ENTREGA
       const [ultimaActa] = await connection.query(
         `SELECT correla_AEEnc FROM acta_entrega_encabezado 
-                 WHERE correla_AEEnc LIKE ? ORDER BY idActa_EntregaEnc DESC LIMIT 1`,
+         WHERE correla_AEEnc LIKE ? ORDER BY idActa_EntregaEnc DESC LIMIT 1`,
         [`${prefijo}-${anioActual}-%`],
       );
-
       let siguienteNumero = 1;
       if (ultimaActa.length > 0) {
         const partes = ultimaActa[0].correla_AEEnc.split("-");
@@ -186,64 +174,41 @@ exports.procesarActa = async (req, res) => {
       nuevoCorrelativo = `${prefijo}-${anioActual}-${String(siguienteNumero).padStart(3, "0")}`;
 
       const queryEncabezado = `
-                INSERT INTO acta_entrega_encabezado 
-                (correla_AEEnc, idUsuarios, idReceptores, idEmpleados, asunto_AEEnc, fech_AEEnc, est_AEEnc) 
-                VALUES (?, ?, ?, ?, ?, NOW(), 'Borrador')`;
-
+        INSERT INTO acta_entrega_encabezado 
+        (correla_AEEnc, idUsuarios, idReceptores, idEmpleados, asunto_AEEnc, fech_AEEnc, est_AEEnc, img_AEEnc) 
+        VALUES (?, ?, ?, ?, ?, NOW(), 'Borrador', ?)
+      `;
       const [resEncabezado] = await connection.query(queryEncabezado, [
         nuevoCorrelativo,
         idUsuarios,
         idReceptores || null,
         idEmpleados || null,
         asunto,
+        imagenesJSON,
       ]);
       idNuevoEncabezado = resEncabezado.insertId;
 
-      if (items && items.length > 0) {
+      if (items && items.length) {
         const valoresDetalle = [];
-
-        for (const item of items) {
-          const idEquipoActual = item.idEquipo || await obtenerOCrearEquipo(item);
-
-          if (!idEquipoActual) {
-            const queryNuevoEquipo = `
-                INSERT INTO equipo (tipo, marca, modelo, serie, numFich, numInv) 
-                VALUES (?, ?, ?, ?, ?, ?)
-            `;
-            const [resNuevoEquipo] = await connection.query(queryNuevoEquipo, [
-              item.tipo || "No especificado",
-              item.marca || "No especificada",
-              item.modelo || "No especificado",
-              item.serie || "S/N",
-              item.numeroFicha || item.numFich || item.numFicha || null,
-              item.numeroInventario || item.numInv || null,
-            ]);
-
-            idEquipoActual = resNuevoEquipo.insertId;
-          }
-
-          const descripcionFinal = descripcion || "";
-
+        for (const item of JSON.parse(items)) {
+          const idEquipoActual = await obtenerOCrearEquipo(item);
           valoresDetalle.push([
             idNuevoEncabezado,
             idEquipoActual,
-            descripcionFinal,
+            descripcion || "",
             item.asignado_a || "",
             observacion || "",
           ]);
-
           itemsGuardados.push({
             idEquipo: idEquipoActual,
-            descripcion: descripcionFinal,
-            observacion: item.observacion,
+            descripcion,
+            observacion,
           });
         }
-
-        if (valoresDetalle.length > 0) {
+        if (valoresDetalle.length) {
           await connection.query(
             `INSERT INTO acta_entrega_detalle 
-                        (idActa_EntregaEnc, idEquipo, descripcion_AEDet, asignado_a, observacion_AEDet) 
-                        VALUES ?`,
+             (idActa_EntregaEnc, idEquipo, descripcion_AEDet, asignado_a, observacion_AEDet) VALUES ?`,
             [valoresDetalle],
           );
         }
@@ -252,12 +217,12 @@ exports.procesarActa = async (req, res) => {
 
     await connection.commit();
 
-    // ENVIAMOS AL FRONTEND LOS DATOS NECESARIOS PARA MOSTRAR EN EL DOCUMENTO Y FIRMAS
     res.status(201).json({
       mensaje: `Acta de ${tipo} creada exitosamente`,
       correlativo: nuevoCorrelativo,
       tipo: tipo,
       id: idNuevoEncabezado,
+      imagenes: urlsImagenes,
       datosFrontend: {
         usuarioNombre: emisor.nomUsu,
         usuarioCargo: emisor.cargoUsu,
@@ -293,6 +258,7 @@ exports.obtenerActaPorId = async (req, res) => {
     let unidadReceptor = "";
     let empresaReceptor = "";
     let detalles = [];
+    let imagenes = [];
 
     //SE BUSCA SEGÚN EL TIPO DE ACTA
     if (tipo.toUpperCase() === "RETIRO") {
@@ -311,6 +277,11 @@ exports.obtenerActaPorId = async (req, res) => {
       fecha = encabezado.fech_AREnc;
       estado = encabezado.est_AREnc;
       correlativo = encabezado.correla_AREnc;
+      imagenes = encabezado.img_AREnc
+        ? typeof encabezado.img_AREnc === "string"
+          ? JSON.parse(encabezado.img_AREnc)
+          : encabezado.img_AREnc
+        : [];
 
       const [detData] = await connection.query(
         `SELECT d.idActa_RetiroDet, d.idEquipo, d.desc_ARDet,
@@ -349,7 +320,12 @@ exports.obtenerActaPorId = async (req, res) => {
       fecha = encabezado.fech_AEEnc;
       estado = encabezado.est_AEEnc;
       correlativo = encabezado.correla_AEEnc;
-
+      imagenes = encabezado.img_AEEnc
+        ? typeof encabezado.img_AEEnc === "string"
+          ? JSON.parse(encabezado.img_AEEnc)
+          : encabezado.img_AEEnc
+        : [];
+        
       const [detData] = await connection.query(
         `SELECT d.idActa_EntregaDet, d.idEquipo, d.descripcion_AEDet,
           d.asignado_a, d.observacion_AEDet,
@@ -436,6 +412,7 @@ exports.obtenerActaPorId = async (req, res) => {
         empresa: empresaReceptor || "",
       },
       items: detalles,
+      imagenes: imagenes || [],
     });
   } catch (error) {
     console.error(`Error al obtener el acta de ${tipo}:`, error);

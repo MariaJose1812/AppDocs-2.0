@@ -21,6 +21,7 @@ import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
@@ -36,7 +37,7 @@ const P = {
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
     textSub: "#E0E0E0",
-    accent: "#60A5FA",
+    accent: "#075985",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
     tabInactive: "#A0A0A0",
@@ -161,6 +162,7 @@ export default function EmpleadosReceptoresScreen() {
 
   const [mostrarNuevoCargo, setMostrarNuevoCargo] = useState(false);
   const [nuevoCargo, setNuevoCargo] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
 
   useEffect(() => {
     cargarDatos();
@@ -382,17 +384,27 @@ export default function EmpleadosReceptoresScreen() {
         )
       : [];
 
-  const datosFiltrados = (
-    tipoActivo === "empleados" ? empleados : receptores
-  ).filter((item) => {
-    const txt = busqueda.toLowerCase();
-    return (
-      (item.nomEmp || item.nomRec || "").toLowerCase().includes(txt) ||
-      (item.corEmp || item.corRec || "").toLowerCase().includes(txt) ||
-      (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(txt) ||
-      (item.nomOficina || "").toLowerCase().includes(txt)
-    );
-  });
+  const datosFiltrados = (tipoActivo === "empleados" ? empleados : receptores)
+    .filter((item) => {
+      const txt = busqueda.toLowerCase();
+      return (
+        (item.nomEmp || item.nomRec || "").toLowerCase().includes(txt) ||
+        (item.corEmp || item.corRec || "").toLowerCase().includes(txt) ||
+        (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(txt) ||
+        (item.nomOficina || "").toLowerCase().includes(txt)
+      );
+    })
+    .filter((item) => {
+      if (filtroEstado === "activos") return item.estado === "Activo";
+      if (filtroEstado === "inactivos") return item.estado === "Inactivo";
+      return true;
+    })
+    .sort((a, b) => {
+      // Activos primero, inactivos después
+      if (a.estado === "Activo" && b.estado === "Inactivo") return -1;
+      if (a.estado === "Inactivo" && b.estado === "Activo") return 1;
+      return 0;
+    });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
@@ -503,6 +515,37 @@ export default function EmpleadosReceptoresScreen() {
                 />
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Filtro por estado */}
+          <View style={[styles.filterContainer, { borderColor: c.border }]}>
+            {["todos", "activos", "inactivos"].map((tipo) => (
+              <TouchableOpacity
+                key={tipo}
+                style={[
+                  styles.filterButton,
+                  filtroEstado === tipo && styles.filterButtonActive,
+                  {
+                    backgroundColor:
+                      filtroEstado === tipo ? c.accent : "transparent",
+                  },
+                ]}
+                onPress={() => setFiltroEstado(tipo)}
+              >
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    { color: filtroEstado === tipo ? "#fff" : c.textMuted },
+                  ]}
+                >
+                  {tipo === "todos"
+                    ? "Todos"
+                    : tipo === "activos"
+                      ? "Activos"
+                      : "Inactivos"}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           {/* Lista */}
@@ -704,6 +747,7 @@ export default function EmpleadosReceptoresScreen() {
             </View>
           )}
         </View>
+        <Footer />
       </CustomScrollView>
 
       {/*MODAL*/}
@@ -1325,4 +1369,30 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   inlineBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 4,
+  },
+  filterButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  filterButtonActive: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  filterButtonText: {
+    fontWeight: "600",
+    fontSize: 13,
+  },
 });

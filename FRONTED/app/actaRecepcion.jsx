@@ -17,15 +17,16 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
-import { generarHTMLRecepcion } from "../utils/actaRecepcionHTML";
+import { generarHTMLRecepcion } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-// ── Paleta de colores por tema ───────────────────────────────────────────────
 const P = {
   dark: {
     bg: "#121212",
@@ -73,7 +74,6 @@ const P = {
   },
 };
 
-// ── Componentes reutilizables con tema ──────────────────────────────────────
 const ThemedInput = ({
   value,
   onChangeText,
@@ -143,7 +143,7 @@ const ThemedPicker = ({
   </View>
 );
 
-// ── Función para obtener la fecha de hoy evitando fallos de timezone ────────
+//Función para obtener la fecha de hoy
 const obtenerFechaActual = () => {
   const d = new Date();
   const dia = String(d.getDate()).padStart(2, "0");
@@ -157,6 +157,7 @@ export default function ActaRecepcionScreen() {
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
   const tipoActa = "RECEPCION";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
@@ -191,7 +192,7 @@ export default function ActaRecepcionScreen() {
 
   const TASA_CAMBIO = 25.5;
 
-  // ── Cargar emisor + receptores ────────────────────────────────────────────
+  // CARGAR EMISOR Y RECEPTOR
   useEffect(() => {
     const cargarTodo = async () => {
       try {
@@ -249,29 +250,35 @@ export default function ActaRecepcionScreen() {
         }
       } catch (err) {
         console.error("Error trayendo acta:", err);
-        Alert.alert("Error", "No se pudo cargar el detalle del acta");
+        showAlert({
+          title: "Error",
+          message: "No se pudo cargar el detalle del acta",
+        });
       }
     };
     cargarActa();
   }, [id]);
 
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        if (window.confirm(texto))
-          botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
   const guardarEmisor = async () => {
@@ -290,7 +297,7 @@ export default function ActaRecepcionScreen() {
     }
   };
 
-  // ── Agregar ítem ──────────────────────────────────────────────────────────
+  // AGREGAR ITEM
   const agregarItem = () => {
     if (!tempDescProd.trim()) {
       mostrarAlerta("Atención", "La descripción del producto es obligatoria.");
@@ -328,26 +335,21 @@ export default function ActaRecepcionScreen() {
     setItems(items.filter((i) => i._idTemporal !== idTemp));
 
   const cancelarActa = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
-    }
+      ],
+    );
   };
 
-  // ── Guardar acta ──────────────────────────────────────────────────────────
+  // GUARDAR ACTA
   const generarActa = async () => {
     if (!emisorNombre.trim()) {
       mostrarAlerta("Error", "Ingresa el nombre del firmante.");
@@ -400,7 +402,7 @@ export default function ActaRecepcionScreen() {
     }
   };
 
-  // ── Generar PDF ───────────────────────────────────────────────────────────
+  // GENERAR PDF
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
@@ -472,7 +474,6 @@ export default function ActaRecepcionScreen() {
     }
   };
 
-  // ── Estilos dinámicos con useMemo ─────────────────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -590,7 +591,7 @@ export default function ActaRecepcionScreen() {
         cancelBtnText: { color: c.textMuted, fontSize: 16, fontWeight: "700" },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -602,7 +603,6 @@ export default function ActaRecepcionScreen() {
     [c],
   );
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -928,7 +928,7 @@ export default function ActaRecepcionScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -951,6 +951,7 @@ export default function ActaRecepcionScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

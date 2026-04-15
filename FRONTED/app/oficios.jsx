@@ -17,14 +17,16 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
+import { generarHTMLOficio } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
+import { useAlert } from "../context/alertContext";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-// ── Paleta de colores por tema (igual que en actaEntrega) ────────────────────
 const P = {
   dark: {
     bg: "#121212",
@@ -70,7 +72,6 @@ const P = {
   },
 };
 
-// ── Componentes reutilizables con tema ────────────────────────────────────────
 const ThemedInput = ({
   value,
   onChangeText,
@@ -140,7 +141,6 @@ const ThemedPicker = ({
   </View>
 );
 
-// ─── Constantes del firmante por defecto ──────────────────────────────────────
 const EMISOR_KEY = "oficio_emisor";
 const EMISOR_DEFAULT = {
   nombre: "Ing. Marco Aguilera",
@@ -153,11 +153,12 @@ export default function OficioScreen() {
   const router = useRouter();
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
+  const { showAlert } = useAlert();
 
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  // ── Emisor ──
+  //EMISOR
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [emisorTratamiento, setEmisorTratamiento] = useState(
@@ -165,7 +166,7 @@ export default function OficioScreen() {
   );
   const [editandoEmisor, setEditandoEmisor] = useState(false);
 
-  // ── Receptor ──
+  //RECEPTOR
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
@@ -177,12 +178,11 @@ export default function OficioScreen() {
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
 
-  // ── Contenido ──
+  // CONTENIDO
   const [asunto, setAsunto] = useState("");
   const [tempItem, setTempItem] = useState("");
   const [items, setItems] = useState([]);
 
-  // ── Meta ──
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -192,7 +192,7 @@ export default function OficioScreen() {
     year: "numeric",
   });
 
-  // ── Carga inicial ──
+  //CARGAR INCIAL
   useEffect(() => {
     const cargarTodo = async () => {
       try {
@@ -220,7 +220,7 @@ export default function OficioScreen() {
     cargarTodo();
   }, []);
 
-  // ── Cargar oficio en modo vista ──
+  // CARGAR OFICIO VISTA
   useEffect(() => {
     const cargarOficio = async () => {
       if (!id) return;
@@ -259,22 +259,25 @@ export default function OficioScreen() {
   }, [id]);
 
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    if (Platform.OS === "web") {
-      const texto = mensaje ? `${titulo}\n\n${mensaje}` : titulo;
-      if (botones.length > 1) {
-        if (window.confirm(texto))
-          botones.find((b) => b.style !== "cancel")?.onPress?.();
-      } else {
-        window.alert(texto);
-        botones[0]?.onPress?.();
-      }
-    } else {
-      Alert.alert(
-        titulo,
-        mensaje,
-        botones.length > 0 ? botones : [{ text: "OK" }],
-      );
-    }
+    const alertButtons =
+      botones.length > 0
+        ? botones.map((btn) => ({
+            text: btn.text,
+            style:
+              btn.style === "cancel"
+                ? "cancel"
+                : btn.style === "destructive"
+                  ? "danger"
+                  : "primary",
+            onPress: btn.onPress,
+          }))
+        : [{ text: "Aceptar" }];
+
+    showAlert({
+      title: titulo,
+      message: mensaje,
+      buttons: alertButtons,
+    });
   };
 
   const guardarEmisor = async () => {
@@ -313,23 +316,18 @@ export default function OficioScreen() {
     setItems(items.filter((i) => i._idTemporal !== idTemp));
 
   const cancelar = () => {
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "¿Estás seguro?\n\nSi cancelas, perderás todos los datos.",
-        )
-      )
-        router.replace("/generarDocs");
-    } else {
-      Alert.alert("¿Estás seguro?", "Si cancelas, perderás todos los datos.", [
+    mostrarAlerta(
+      "¿Estás seguro?",
+      "Si cancelas, perderás todos los datos ingresados.",
+      [
         { text: "No, continuar", style: "cancel" },
         {
           text: "Sí, cancelar",
-          style: "destructive",
+          style: "danger",
           onPress: () => router.replace("/generarDocs"),
         },
-      ]);
-    }
+      ],
+    );
   };
 
   const getNombreParaPDF = () =>
@@ -406,7 +404,6 @@ export default function OficioScreen() {
     }
   };
 
-  // ── Generar PDF ──
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
@@ -441,159 +438,27 @@ export default function OficioScreen() {
         .map((item) => `<p class="parrafo">${item.desc_OfiDet}</p>`)
         .join("");
 
-      const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>Oficio ${correlativoFinal}</title>
-<style>
-  * { box-sizing: border-box; max-width: 100%; }
+      const fechaHoy = new Date().toLocaleDateString("es-HN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
 
-  @page { size: A4 portrait; margin: 0; }
-
-  body {
-  font-family: Arial, sans-serif;
-  color: #000;
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 25mm 20mm;
-  margin: 0;
-
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-
-  .titulo-oficio {
-    text-align: center;
-    font-weight: bold;
-    font-size: 14px;
-    text-decoration: underline;
-    text-transform: uppercase;
-    margin-bottom: 30px;
-    letter-spacing: 0.5px;
-  }
-
-  .cuerpo {
-    font-size: 12px;
-    text-align: justify;
-    margin-bottom: 15px;
-    line-height: 1.7;
-  }
-
-  .destinatario {
-    margin-bottom: 20px;
-  }
-
-  .destinatario span {
-    display: block;
-  }
-
-  .dest-nombre {
-    font-weight: bold;
-  }
-
-  .asunto {
-    margin-bottom: 20px;
-  }
-
-  .parrafo {
-  margin-bottom: 14px;
-  text-align: justify;
-  line-height: 1.8;
-
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-  .firma-wrapper {
-    display: flex;
-    justify-content: center;
-    margin-top: 80px;
-  }
-
-  .firma-box {
-    width: 300px;
-    text-align: center;
-  }
-
-  .firma-line {
-    border-top: 1px solid #000;
-    margin-bottom: 5px;
-  }
-</style>
-</head>
-
-<body>
-
-  <!-- ENCABEZADO (IGUAL QUE RECEPCIÓN) -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
-    <img src="${uriConadeh}" style="height:75px;object-fit:contain;" />
-    
-    <div style="text-align:center;flex:1;padding:0 15px;">
-      <p style="font-weight:bold;font-size:13px;margin:0;text-transform:uppercase;">
-        Comisionado Nacional de los Derechos Humanos
-      </p>
-      <p style="font-size:11px;margin:5px 0 0 0;">
-        (CONADEH) — Honduras, C.A.
-      </p>
-    </div>
-
-    <img src="${uriInfo}" style="height:65px;object-fit:contain;" />
-  </div>
-
-  <!-- BARRA -->
-  <div style="text-align:center;padding:7px 0;
-      border-top:2px solid ${cPlantilla.colorLinea};
-      border-bottom:2px solid ${cPlantilla.colorLinea};
-      margin-bottom:35px;
-      font-weight:bold;
-      font-size:12px;
-      text-transform:uppercase;">
-    UNIDAD DE INFOTECNOLOGÍA
-  </div>
-
-  <!-- TÍTULO -->
-  <div class="titulo-oficio">
-    OFICIO ${correlativoFinal}
-  </div>
-
-  <!-- DESTINATARIO -->
-  <div class="destinatario">
-    <span>${tratPara}</span>
-    <span class="dest-nombre">${nombrePara}</span>
-    <span>${cargoPara}</span>
-    <span style="margin-top:10px;">${tratPara} ${apellido}:</span>
-  </div>
-
-  <!-- ASUNTO -->
-  <div class="asunto">
-    <strong>Asunto:</strong> ${asunto}
-  </div>
-
-  <!-- CUERPO -->
-  ${items
-    .map(
-      (item) => `
-      <p class="parrafo">${item.desc_OfiDet}</p>
-    `,
-    )
-    .join("")}
-
-  <!-- DESPEDIDA -->
-  <p class="cuerpo">Saludos cordiales,</p>
-
-  <!-- FIRMA -->
-  <div class="firma-wrapper">
-    <div class="firma-box">
-      <div class="firma-line"></div>
-      <strong>${emisorNombre}</strong><br/>
-      ${emisorCargo}
-    </div>
-  </div>
-
-</body>
-</html>`;
+      const htmlContent = generarHTMLOficio({
+        data: {
+          emisorNombre: emisorNombre,
+          emisorCargo: emisorCargo,
+          receptorNombre: nombrePara,
+          receptorCargo: cargoPara,
+          receptorTratamiento: tratPara,
+          asunto: asunto,
+          fecha: fechaHoy,
+          correlativoFinal: correlativoFinal,
+          items: items.map((i) => ({ desc_OfiDet: i.desc_OfiDet })),
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+      });
 
       if (Platform.OS === "web") {
         const win = window.open("", "_blank");
@@ -632,7 +497,6 @@ export default function OficioScreen() {
     }
   };
 
-  // ── Estilos dinámicos con useMemo ───────────────────────────────────────────
   const styles = useMemo(
     () =>
       StyleSheet.create({
@@ -748,7 +612,7 @@ export default function OficioScreen() {
           borderBottomWidth: 1,
           borderColor: c.border,
           gap: 10,
-          flexWrap: 'wrap',
+          flexWrap: "wrap",
         },
         itemNumBadge: {
           width: 24,
@@ -765,10 +629,10 @@ export default function OficioScreen() {
           fontSize: 14,
           color: c.text,
           lineHeight: 20,
-          flexWrap: "wrap", 
-          flexShrink: 1, 
-          width: "100%", 
-          ...(Platform.OS === "web" && { wordBreak: "break-word" }), 
+          flexWrap: "wrap",
+          flexShrink: 1,
+          width: "100%",
+          ...(Platform.OS === "web" && { wordBreak: "break-word" }),
         },
         buttonsContainer: {
           flexDirection: "row",
@@ -778,7 +642,7 @@ export default function OficioScreen() {
         },
         saveBtn: {
           flex: 1,
-          backgroundColor: "#3ac40d",
+          backgroundColor: "#b57227",
           paddingVertical: 16,
           borderRadius: 8,
           flexDirection: "row",
@@ -800,7 +664,6 @@ export default function OficioScreen() {
     [c],
   );
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -1164,7 +1027,7 @@ export default function OficioScreen() {
             <TouchableOpacity
               style={[
                 styles.saveBtn,
-                { backgroundColor: isPrinting ? "#93c5fd" : "#2563eb" },
+                { backgroundColor: isPrinting ? "#93c5fd" : "#075985" },
               ]}
               onPress={() => generarPDF(correlativo)}
               disabled={isPrinting}
@@ -1187,6 +1050,7 @@ export default function OficioScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        <Footer />
       </CustomScrollView>
     </SafeAreaView>
   );

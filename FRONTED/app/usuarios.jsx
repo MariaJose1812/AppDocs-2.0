@@ -19,6 +19,7 @@ import { Colors } from "../constants/theme";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
+import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
@@ -343,6 +344,7 @@ export default function UsuariosScreen() {
             </View>
           )}
         </View>
+        <Footer />
       </CustomScrollView>
 
       {/* MODAL CREAR USUARIO */}
