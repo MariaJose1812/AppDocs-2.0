@@ -623,12 +623,6 @@ export default function ActaEntregaScreen() {
         tipoDestinatario === "EMPLEADO" ? empleadoSelNombre : receptorSelNombre;
       const cargoDestinatario =
         tipoDestinatario === "EMPLEADO" ? cargoSel : receptorCargo;
-      const orgDestinatario =
-        tipoDestinatario === "EMPLEADO"
-          ? unidadSel
-            ? `${cargoSel} - ${unidadSel}`
-            : `${cargoSel} - ${oficinaSel}`
-          : `${receptorCargo} - ${receptorEmpresa}`;
 
       const fechaActual = new Date().toLocaleDateString("es-HN", {
         year: "numeric",
@@ -666,52 +660,68 @@ export default function ActaEntregaScreen() {
         return `data:image/jpeg;base64,${base64}`;
       };
 
-      let imagenesHTML = "";
+      // Convertir imágenes a base64 (array de strings)
+      const imagenesBase64 = [];
       if (imagenes.length > 0) {
-        const imgsBase64 = await Promise.all(
-          imagenes.map(async (img) => ({
-            base64: await convertirImagenABase64(img.uri),
-          })),
-        );
-        imagenesHTML = `
-    <div style="margin-top:20px;page-break-inside:avoid;">
-      <p style="font-weight:bold;font-size:11px;margin-bottom:8px;">Evidencias fotográficas:</p>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;">
-        ${imgsBase64.map((img) => `<img src="${img.base64}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`).join("")}
-      </div>
-    </div>`;
+        for (const img of imagenes) {
+          const base64 = await convertirImagenABase64(img.uri);
+          imagenesBase64.push(base64);
+        }
       }
 
       const htmlContent = generarHTMLEntrega({
         data: {
-          emisorNombre: usuarioLogueado,
-          emisorCargo: cargoLogueado,
-          receptorNombre: nombreDestinatarioFinal,
+          emisorNombre: usuarioLogueado || "",
+          emisorCargo: cargoLogueado || "",
+          receptorNombre: nombreDestinatario,
           receptorCargo: cargoDestinatario,
           asunto: tempDesc,
           descripcion: tempDescripcion,
           observacion: tempObs,
           fecha: fechaActual,
           correlativoFinal,
-          items: itemsConAsignado,
+          items: items.map((item) => ({ ...item, asignado_a: asignadoA })),
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
-        imagenesHTML: imagenesHTML,
+        imagenesBase64: imagenesBase64, 
       });
 
+      //WEB Y ELECTRON
       if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta("Ventana bloqueada", "Permite los pop-ups.");
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        const opt = {
+          margin: [0, 0, 0, 0],
+          filename: `Acta_Entrega_${correlativoFinal || "temp"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            letterRendering: true,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        };
+
+        try {
+          await window.html2pdf().set(opt).from(htmlContent, "string").save();
+        } catch (err) {
+          console.error("html2pdf error:", err);
+          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
         }
       } else {
+        // Móvil: usar expo-print
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,

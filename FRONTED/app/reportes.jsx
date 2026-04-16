@@ -491,7 +491,6 @@ export default function ReportesScreen() {
     }
 
     setIsPrinting(true);
-    let imagenesHTML = "";
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
       const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
@@ -527,13 +526,11 @@ export default function ReportesScreen() {
           tipo: "",
         };
 
+      // ---------- CONVERTIR IMÁGENES A BASE64 ----------
       const convertirImagenABase64 = async (uri) => {
         if (Platform.OS === "web") {
-          // Si ya es una URL http o blob, la devolvemos tal cual (el navegador la cargará en el PDF)
           if (uri.startsWith("http") || uri.startsWith("blob:")) return uri;
-          // Si es dataURL, ya es base64
           if (uri.startsWith("data:")) return uri;
-          // Fallback: intentar obtener como blob
           const response = await fetch(uri);
           const blob = await response.blob();
           return new Promise((resolve) => {
@@ -542,7 +539,6 @@ export default function ReportesScreen() {
             reader.readAsDataURL(blob);
           });
         }
-        // Móvil: igual que antes
         if (uri.startsWith("http")) return uri;
         const base64 = await FileSystem.readAsStringAsync(uri, {
           encoding: FileSystem.EncodingType.Base64,
@@ -550,27 +546,10 @@ export default function ReportesScreen() {
         return `data:image/jpeg;base64,${base64}`;
       };
 
-      if (imagenes.length > 0) {
-        const imgsBase64 = await Promise.all(
-          imagenes.map(async (img) => ({
-            base64: await convertirImagenABase64(img.uri),
-          })),
-        );
-
-        imagenesHTML = `
-    <div style="margin-top: 20px;">
-      <h3 style="font-size: 12px; font-weight: bold;">Evidencias:</h3>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-        ${imgsBase64
-          .map(
-            (img) => `
-          <img src="${img.base64}" style="max-width: 200px; max-height: 200px;" />
-        `,
-          )
-          .join("")}
-      </div>
-    </div>
-  `;
+      const imagenesBase64 = [];
+      for (const img of imagenes) {
+        const base64 = await convertirImagenABase64(img.uri);
+        imagenesBase64.push(base64);
       }
 
       const htmlContent = generarHTMLReporte({
@@ -587,22 +566,41 @@ export default function ReportesScreen() {
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
-        imagenesHTML: imagenesHTML,
+        imagenesBase64: imagenesBase64, // ← array de base64
       });
 
+      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta(
-            "Ventana bloqueada",
-            "Permite los pop-ups del navegador.",
-          );
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        const opt = {
+          margin: [0, 0, 0, 0],
+          filename: `Reporte_Daño_${correlativoFinal || "temp"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            letterRendering: true,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        };
+
+        try {
+          await window.html2pdf().set(opt).from(htmlContent, "string").save();
+        } catch (err) {
+          console.error("html2pdf error:", err);
+          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
         }
       } else {
         const { uri } = await Print.printToFileAsync({
@@ -613,7 +611,7 @@ export default function ReportesScreen() {
         if (puedCompartir) {
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Reporte",
+            dialogTitle: "Guardar o compartir Acta",
             UTI: "com.adobe.pdf",
           });
         } else {
@@ -621,6 +619,7 @@ export default function ReportesScreen() {
         }
       }
     } catch (err) {
+      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);

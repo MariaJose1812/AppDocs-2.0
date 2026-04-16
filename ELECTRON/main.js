@@ -18,7 +18,8 @@ const fs = require("fs");
 // Variables de entorno
 // En producción: carga la app compilada (dist/)
 // En desarrollo: apunta al servidor de Expo
-const isDev = process.env.NODE_ENV === "development";
+//const isDev = process.env.NODE_ENV === "development";
+const isDev = true;
 const EXPO_URL = process.env.EXPO_URL || "http://localhost:8081";
 
 let mainWindow = null;

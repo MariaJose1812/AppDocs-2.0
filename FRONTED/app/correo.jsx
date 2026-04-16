@@ -661,12 +661,14 @@ ${parrafosHTML}
       }
 
       if (adjuntos.length === 0) {
-        Alert.alert("Error", "No se pudieron generar los adjuntos.");
+        showAlert({
+          title: "Error",
+          message: "No se pudieron generar los adjuntos.",
+        });
         setGenerando(false);
         return;
       }
 
-      // Enviar al backend
       await api.post("/correo/enviar", {
         para,
         cc: cc || "",
@@ -675,10 +677,13 @@ ${parrafosHTML}
         adjuntos,
       });
 
-      if (Platform.OS === "web") window.alert("Correo enviado correctamente.");
-      else Alert.alert("Éxito", "Correo enviado correctamente.");
+      showAlert({
+        title: "Éxito",
+        message: "Correo enviado correctamente.",
+        buttons: [{ text: "Aceptar" }],
+      });
 
-      // Limpiar formulario
+      // Limpiar formulario y selección
       setPara("");
       setCc("");
       setAsunto("");
@@ -687,8 +692,11 @@ ${parrafosHTML}
     } catch (err) {
       const mensaje =
         err.response?.data?.error || "No se pudo enviar el correo.";
-      if (Platform.OS === "web") window.alert("Error: " + mensaje);
-      else Alert.alert("Error", mensaje);
+      showAlert({
+        title: "Error",
+        message: mensaje,
+        buttons: [{ text: "Aceptar" }],
+      });
     } finally {
       setGenerando(false);
     }

@@ -440,18 +440,41 @@ export default function ActaRecepcionScreen() {
         logos: { uriConadeh, uriInfo },
       });
 
+      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta("Ventana bloqueada", "Permite los pop-ups.");
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        const opt = {
+          margin: [0, 0, 0, 0],
+          filename: `Acta_Recepcion_${correlativoFinal || "temp"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            letterRendering: true,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        };
+
+        try {
+          await window.html2pdf().set(opt).from(htmlContent, "string").save();
+        } catch (err) {
+          console.error("html2pdf error:", err);
+          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
         }
       } else {
+        // Móvil
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,
@@ -468,6 +491,7 @@ export default function ActaRecepcionScreen() {
         }
       }
     } catch (err) {
+      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);

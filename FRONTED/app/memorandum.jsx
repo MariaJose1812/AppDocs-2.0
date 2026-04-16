@@ -398,87 +398,91 @@ export default function MemorandumScreen() {
 
   //Generar PDF
   const generarPDF = async (correlativoParam = "") => {
-    if (isPrinting) return;
-    if (!correlativoParam && !correlativo && !isReadOnly) {
-      mostrarAlerta(
-        "Atención",
-        "Guarda el memorándum primero para generar el PDF.",
-      );
-      return;
-    }
-    if (!emisorNombre.trim()) {
-      mostrarAlerta("Atención", "Falta el nombre del firmante.");
-      return;
-    }
-    if (items.length === 0) {
-      mostrarAlerta("Atención", "No hay contenido para mostrar.");
-      return;
-    }
+  if (isPrinting) return;
+  if (!correlativoParam && !correlativo && !isReadOnly) {
+    mostrarAlerta("Atención", "Guarda el memorándum primero para generar el PDF.");
+    return;
+  }
+  if (!emisorNombre.trim()) {
+    mostrarAlerta("Atención", "Falta el nombre del firmante.");
+    return;
+  }
+  if (items.length === 0) {
+    mostrarAlerta("Atención", "No hay contenido para mostrar.");
+    return;
+  }
 
-    setIsPrinting(true);
-    try {
-      const correlativoFinal = correlativoParam || correlativo || "";
+  setIsPrinting(true);
+  try {
+    const correlativoFinal = correlativoParam || correlativo || "";
+    const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
+      await Promise.all([getLogoURIs(), obtenerPlantillaActiva("MEMORANDUM")]);
 
-      const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
-        await Promise.all([
-          getLogoURIs(),
-          obtenerPlantillaActiva("MEMORANDUM"),
-        ]);
+    const nombrePara = getNombreParaPDF();
+    const cargoPara = getCargoParaPDF();
 
-      const nombrePara = getNombreParaPDF();
-      const cargoPara = getCargoParaPDF();
+    const htmlContent = generarHTMLMemorandum({
+      data: {
+        emisorNombre,
+        emisorCargo,
+        receptorNombre: nombrePara,
+        receptorCargo: cargoPara,
+        asunto,
+        fecha: fechaHoy,
+        correlativoFinal,
+        items,
+      },
+      config: cPlantilla,
+      logos: { uriConadeh, uriInfo },
+    });
 
-      const htmlContent = generarHTMLMemorandum({
-        data: {
-          emisorNombre,
-          emisorCargo,
-          receptorNombre: nombrePara,
-          receptorCargo: cargoPara,
-          asunto,
-          fecha: fechaHoy,
-          correlativoFinal,
-          items,
-        },
-        config: cPlantilla,
-        logos: { uriConadeh, uriInfo },
-      });
-
-      if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta(
-            "Ventana bloqueada",
-            "Permite los pop-ups del navegador.",
-          );
-        }
-      } else {
-        const { uri } = await Print.printToFileAsync({
-          html: htmlContent,
-          base64: false,
+    // ---------- WEB / ELECTRON con html2pdf ----------
+    if (Platform.OS === "web") {
+      if (typeof window.html2pdf === "undefined") {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src =
+            "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
         });
-        const puedCompartir = await Sharing.isAvailableAsync();
-        if (puedCompartir) {
-          await Sharing.shareAsync(uri, {
-            mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Memorándum",
-            UTI: "com.adobe.pdf",
-          });
-        } else {
-          mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-        }
       }
-    } catch (err) {
-      mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
-    } finally {
-      setIsPrinting(false);
+
+      const opt = {
+        margin: [0, 0, 0, 0],
+        filename: `Memorandum_${correlativoFinal || "temp"}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, letterRendering: true, useCORS: true, allowTaint: true, logging: false },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      };
+
+      try {
+        await window.html2pdf().set(opt).from(htmlContent, "string").save();
+      } catch (err) {
+        console.error("html2pdf error:", err);
+        mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
+      }
+    } else {
+      const { uri } = await Print.printToFileAsync({ html: htmlContent, base64: false });
+      const puedCompartir = await Sharing.isAvailableAsync();
+      if (puedCompartir) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: "Guardar o compartir Acta",
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
+      }
     }
-  };
+  } catch (err) {
+    console.error("Error al generar PDF:", err.message);
+    mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
+  } finally {
+    setIsPrinting(false);
+  }
+};
 
   const styles = useMemo(
     () =>

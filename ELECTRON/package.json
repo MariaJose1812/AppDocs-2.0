@@ -1,20 +1,32 @@
 {
   "name": "electron",
   "version": "1.0.0",
-  "description": "",
+  "description": "Sistema de Gestión Documental CONADEH",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build:dev": "cross-env NODE_ENV=development electron-builder --win",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build:dev": "cross-env NODE_ENV=development electron-builder --win portable",
+    "pack": "electron-packager . CONADEH-Sistema --platform=win32 --arch=x64 --out=release --overwrite ",
+    "build:prod": "electron-builder --win portable"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "build": {
+    "appId": "com.conadeh.gestion",
+    "productName": "CONADEH Gestión Documental",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "portable",
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "artifactName": "CONADEH-Sistema-${version}.exe"
+    }
+  },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "electron": "^40.2.1",
-    "electron-builder": "^26.7.0"
+    "electron-builder": "^26.7.0",
+    "electron-packager": "^17.1.2"
   }
 }

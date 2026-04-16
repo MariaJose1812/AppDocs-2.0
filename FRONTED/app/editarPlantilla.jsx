@@ -19,6 +19,7 @@ import { Image } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useTheme } from "../hooks/themeContext";
 import { Colors } from "../constants/theme";
+import { useAlert } from "../context/alertContext";
 import {
   guardarLogoPersonalizado,
   obtenerLogo,
@@ -73,6 +74,7 @@ const TB = {
 
 export default function EditarPlantillaScreen() {
   const router = useRouter();
+  const { showAlert } = useAlert();
   const { id, tipoActa: tipoActaParam } = useLocalSearchParams();
   const [tipoDoc, setTipoDoc] = useState(tipoActaParam || "ENTREGA");
   const esNueva = !id,
@@ -273,9 +275,7 @@ export default function EditarPlantillaScreen() {
 
   const guardar = async () => {
     if (!nombre.trim()) {
-      Platform.OS === "web"
-        ? window.alert("Nombre obligatorio.")
-        : Alert.alert("Error", "Nombre obligatorio.");
+        showAlert({ title: "Error", message: "Nombre obligatorio." });
       return;
     }
     setGuardando(true);
@@ -293,14 +293,10 @@ export default function EditarPlantillaScreen() {
           config: configFinal,
         });
       await invalidarCache(tipoDoc || "ENTREGA");
-      Platform.OS === "web"
-        ? window.alert("Plantilla guardada.")
-        : Alert.alert("Éxito", "Plantilla guardada.");
+      showAlert({ title: "Éxito", message: "Plantilla guardada." });
       router.back();
     } catch {
-      Platform.OS === "web"
-        ? window.alert("Error al guardar.")
-        : Alert.alert("Error", "No se pudo guardar.");
+      showAlert({ title: "Error", message: "No se pudo guardar." });
     } finally {
       setGuardando(false);
     }

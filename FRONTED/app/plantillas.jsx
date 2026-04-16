@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useAlert } from "../context/alertContext";
 
 import { useTheme } from "../hooks/themeContext";
 import { Colors } from "../constants/theme";
@@ -38,6 +39,7 @@ export default function PlantillasScreen() {
   const [tipoSel, setTipoSel] = useState("ENTREGA");
   const [plantillas, setPlantillas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const { showAlert } = useAlert();
 
   // Variables de tema dinámico
   const { theme } = useTheme();
@@ -78,7 +80,10 @@ export default function PlantillasScreen() {
       await invalidarCache(tipoSel);
       cargar();
     } catch (e) {
-      Alert.alert("Error", "No se pudo activar la plantilla.");
+      showAlert({
+        title: "Error",
+        message: "No se pudo activar la plantilla.",
+      });
     }
   };
 
@@ -88,17 +93,25 @@ export default function PlantillasScreen() {
         .delete(`/plantillas/${id}`)
         .then(cargar)
         .catch(() => {
-          Platform.OS === "web"
-            ? window.alert("No se puede eliminar la plantilla activa.")
-            : Alert.alert("Error", "No se puede eliminar la plantilla activa.");
+          showAlert({
+            title: "Error",
+            message: "No se puede eliminar la plantilla activa.",
+          });
         });
 
-    Platform.OS === "web"
-      ? window.confirm("¿Eliminar esta plantilla?") && ejecutar()
-      : Alert.alert("Confirmar", "¿Eliminar esta plantilla?", [
-          { text: "Cancelar", style: "cancel" },
-          { text: "Eliminar", style: "destructive", onPress: ejecutar },
-        ]);
+    showAlert({
+      title: "Confirmar",
+      message: "¿Eliminar esta plantilla?",
+      buttons: [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: () => {
+          },
+        },
+      ],
+    });
   };
 
   return (
@@ -107,164 +120,164 @@ export default function PlantillasScreen() {
       <Navbar />
       <CustomScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.contentWidth}>
-        <View style={styles.topRow}>
-          <Text style={[styles.title, { color: textColor }]}>
-            Plantillas de Documentos
-          </Text>
-          <TouchableOpacity
-            style={[styles.nuevaBtn, { backgroundColor: highlightCol }]}
-            onPress={() =>
-              router.push({
-                pathname: "/editarPlantilla",
-                params: { tipoActa: tipoSel },
-              })
-            }
-          >
-            <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-            <Text style={styles.nuevaBtnText}>Nueva</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* TABS — scroll horizontal */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabsScroll}
-          contentContainerStyle={styles.tabsContent}
-        >
-          {TIPOS.map(({ key, label }) => (
+          <View style={styles.topRow}>
+            <Text style={[styles.title, { color: textColor }]}>
+              Plantillas de Documentos
+            </Text>
             <TouchableOpacity
-              key={key}
-              style={[
-                styles.tab,
-                { backgroundColor: surfaceBg, borderColor: borderCol },
-                tipoSel === key && {
-                  backgroundColor: highlightCol,
-                  borderColor: highlightCol,
-                },
-              ]}
-              onPress={() => setTipoSel(key)}
+              style={[styles.nuevaBtn, { backgroundColor: highlightCol }]}
+              onPress={() =>
+                router.push({
+                  pathname: "/editarPlantilla",
+                  params: { tipoActa: tipoSel },
+                })
+              }
             >
-              <Text
+              <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+              <Text style={styles.nuevaBtnText}>Nueva</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* TABS — scroll horizontal */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabsScroll}
+            contentContainerStyle={styles.tabsContent}
+          >
+            {TIPOS.map(({ key, label }) => (
+              <TouchableOpacity
+                key={key}
                 style={[
-                  styles.tabText,
-                  { color: subColor },
-                  tipoSel === key && { color: "#fff" },
+                  styles.tab,
+                  { backgroundColor: surfaceBg, borderColor: borderCol },
+                  tipoSel === key && {
+                    backgroundColor: highlightCol,
+                    borderColor: highlightCol,
+                  },
+                ]}
+                onPress={() => setTipoSel(key)}
+              >
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: subColor },
+                    tipoSel === key && { color: "#fff" },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {cargando ? (
+            <ActivityIndicator
+              size="large"
+              color={highlightCol}
+              style={{ marginTop: 40 }}
+            />
+          ) : plantillas.length === 0 ? (
+            <View style={styles.empty}>
+              <MaterialCommunityIcons
+                name="file-document-outline"
+                size={48}
+                color={subColor}
+              />
+              <Text style={[styles.emptyText, { color: subColor }]}>
+                No hay plantillas para este tipo.
+              </Text>
+            </View>
+          ) : (
+            plantillas.map((p) => (
+              <View
+                key={p.idPlantilla}
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: surfaceBg,
+                    borderLeftColor: borderCol,
+                    shadowColor: isDark ? "#000" : "#94a3b8",
+                  },
+                  p.activa && { borderLeftColor: highlightCol },
                 ]}
               >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {cargando ? (
-          <ActivityIndicator
-            size="large"
-            color={highlightCol}
-            style={{ marginTop: 40 }}
-          />
-        ) : plantillas.length === 0 ? (
-          <View style={styles.empty}>
-            <MaterialCommunityIcons
-              name="file-document-outline"
-              size={48}
-              color={subColor}
-            />
-            <Text style={[styles.emptyText, { color: subColor }]}>
-              No hay plantillas para este tipo.
-            </Text>
-          </View>
-        ) : (
-          plantillas.map((p) => (
-            <View
-              key={p.idPlantilla}
-              style={[
-                styles.card,
-                {
-                  backgroundColor: surfaceBg,
-                  borderLeftColor: borderCol,
-                  shadowColor: isDark ? "#000" : "#94a3b8",
-                },
-                p.activa && { borderLeftColor: highlightCol },
-              ]}
-            >
-              <View style={styles.cardLeft}>
-                {p.activa && (
-                  <View
-                    style={[styles.badge, { backgroundColor: badgeBgActive }]}
-                  >
-                    <Text
-                      style={[styles.badgeText, { color: badgeTextActive }]}
+                <View style={styles.cardLeft}>
+                  {p.activa && (
+                    <View
+                      style={[styles.badge, { backgroundColor: badgeBgActive }]}
                     >
-                      ACTIVA
-                    </Text>
-                  </View>
-                )}
-                <Text style={[styles.cardNombre, { color: textColor }]}>
-                  {p.nombrePlantilla}
-                </Text>
-                <Text style={[styles.cardFecha, { color: subColor }]}>
-                  Modificada:{" "}
-                  {new Date(p.fechaModificacion).toLocaleDateString("es-HN")}
-                </Text>
-              </View>
-
-              <View style={styles.acciones}>
-                {!p.activa && (
-                  <TouchableOpacity
-                    style={styles.accionBtn}
-                    onPress={() => activar(p.idPlantilla)}
-                  >
-                    <MaterialCommunityIcons
-                      name="check-circle-outline"
-                      size={22}
-                      color={badgeTextActive}
-                    />
-                    <Text
-                      style={[styles.accionText, { color: badgeTextActive }]}
-                    >
-                      Activar
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.accionBtn}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/editarPlantilla",
-                      params: { id: p.idPlantilla, tipoActa: tipoSel },
-                    })
-                  }
-                >
-                  <MaterialCommunityIcons
-                    name="pencil-outline"
-                    size={22}
-                    color={highlightCol}
-                  />
-                  <Text style={[styles.accionText, { color: highlightCol }]}>
-                    Editar
+                      <Text
+                        style={[styles.badgeText, { color: badgeTextActive }]}
+                      >
+                        ACTIVA
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={[styles.cardNombre, { color: textColor }]}>
+                    {p.nombrePlantilla}
                   </Text>
-                </TouchableOpacity>
-                {!p.activa && (
+                  <Text style={[styles.cardFecha, { color: subColor }]}>
+                    Modificada:{" "}
+                    {new Date(p.fechaModificacion).toLocaleDateString("es-HN")}
+                  </Text>
+                </View>
+
+                <View style={styles.acciones}>
+                  {!p.activa && (
+                    <TouchableOpacity
+                      style={styles.accionBtn}
+                      onPress={() => activar(p.idPlantilla)}
+                    >
+                      <MaterialCommunityIcons
+                        name="check-circle-outline"
+                        size={22}
+                        color={badgeTextActive}
+                      />
+                      <Text
+                        style={[styles.accionText, { color: badgeTextActive }]}
+                      >
+                        Activar
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.accionBtn}
-                    onPress={() => confirmarEliminar(p.idPlantilla)}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/editarPlantilla",
+                        params: { id: p.idPlantilla, tipoActa: tipoSel },
+                      })
+                    }
                   >
                     <MaterialCommunityIcons
-                      name="delete-outline"
+                      name="pencil-outline"
                       size={22}
-                      color={dangerCol}
+                      color={highlightCol}
                     />
-                    <Text style={[styles.accionText, { color: dangerCol }]}>
-                      Eliminar
+                    <Text style={[styles.accionText, { color: highlightCol }]}>
+                      Editar
                     </Text>
                   </TouchableOpacity>
-                )}
+                  {!p.activa && (
+                    <TouchableOpacity
+                      style={styles.accionBtn}
+                      onPress={() => confirmarEliminar(p.idPlantilla)}
+                    >
+                      <MaterialCommunityIcons
+                        name="delete-outline"
+                        size={22}
+                        color={dangerCol}
+                      />
+                      <Text style={[styles.accionText, { color: dangerCol }]}>
+                        Eliminar
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-            </View>
-          ))
-        )}
+            ))
+          )}
         </View>
         <Footer />
       </CustomScrollView>

@@ -432,47 +432,54 @@ export default function OficioScreen() {
       const cargoPara = getCargoParaPDF();
       const tratPara = getTratParaPDF();
 
-      const apellido = nombrePara ? nombrePara.split(" ").slice(-1)[0] : "";
-
-      const parrafos = items
-        .map((item) => `<p class="parrafo">${item.desc_OfiDet}</p>`)
-        .join("");
-
-      const fechaHoy = new Date().toLocaleDateString("es-HN", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      });
-
       const htmlContent = generarHTMLOficio({
         data: {
-          emisorNombre: emisorNombre,
-          emisorCargo: emisorCargo,
+          emisorNombre,
+          emisorCargo,
           receptorNombre: nombrePara,
           receptorCargo: cargoPara,
           receptorTratamiento: tratPara,
-          asunto: asunto,
+          asunto,
           fecha: fechaHoy,
-          correlativoFinal: correlativoFinal,
+          correlativoFinal,
           items: items.map((i) => ({ desc_OfiDet: i.desc_OfiDet })),
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
       });
 
+      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta(
-            "Ventana bloqueada",
-            "Permite los pop-ups del navegador.",
-          );
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        const opt = {
+          margin: [0, 0, 0, 0],
+          filename: `Oficio_${correlativoFinal || "temp"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            letterRendering: true,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        };
+
+        try {
+          await window.html2pdf().set(opt).from(htmlContent, "string").save();
+        } catch (err) {
+          console.error("html2pdf error:", err);
+          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
         }
       } else {
         const { uri } = await Print.printToFileAsync({
@@ -483,7 +490,7 @@ export default function OficioScreen() {
         if (puedCompartir) {
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Oficio",
+            dialogTitle: "Guardar o compartir Acta",
             UTI: "com.adobe.pdf",
           });
         } else {
@@ -491,6 +498,7 @@ export default function OficioScreen() {
         }
       }
     } catch (err) {
+      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);

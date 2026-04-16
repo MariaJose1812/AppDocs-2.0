@@ -434,17 +434,6 @@ export default function PaseSalidaScreen() {
       const nombreRec = getNombreReceptor();
       const empresaRec = getEmpresaReceptor();
 
-      const filasEquipos = equiposItems
-        .map(
-          (eq) => `
-        <tr>
-          <td>${eq.marca || "N/A"}</td>
-          <td>${eq.modelo || "N/A"}</td>
-          <td>${eq.serie || "N/A"}</td>
-        </tr>`,
-        )
-        .join("");
-
       const parrafoPersonalizado = `Por este medio se hace entrega a ${nombreRec || "—"} de la Empresa ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`;
 
       const htmlContent = generarHTMLPaseSalida({
@@ -467,19 +456,38 @@ export default function PaseSalidaScreen() {
         logos: { uriConadeh, uriInfo },
       });
 
+      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
-        const win = window.open("", "_blank");
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        } else {
-          mostrarAlerta(
-            "Ventana bloqueada",
-            "Permite los pop-ups del navegador.",
-          );
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+        }
+
+        const opt = {
+          margin: [0, 0, 0, 0],
+          filename: `Pase_Salida_${correlativoFinal || "temp"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            letterRendering: true,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+          },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        };
+
+        try {
+          await window.html2pdf().set(opt).from(htmlContent, "string").save();
+        } catch (err) {
+          console.error("html2pdf error:", err);
+          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
         }
       } else {
         const { uri } = await Print.printToFileAsync({
@@ -490,7 +498,7 @@ export default function PaseSalidaScreen() {
         if (puedCompartir) {
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Pase de Salida",
+            dialogTitle: "Guardar o compartir Acta",
             UTI: "com.adobe.pdf",
           });
         } else {
@@ -498,6 +506,7 @@ export default function PaseSalidaScreen() {
         }
       }
     } catch (err) {
+      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);
