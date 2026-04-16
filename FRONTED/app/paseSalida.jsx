@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,7 +19,8 @@ import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { generarHTMLPaseSalida } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
-
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
@@ -36,7 +36,6 @@ const P = {
     border2: "#444444",
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
-    textSub: "#E0E0E0",
     accent: "#60A5FA",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
@@ -57,7 +56,6 @@ const P = {
     border2: "#CBD5E1",
     text: "#0F172A",
     textMuted: "#64748B",
-    textSub: "#334155",
     accent: "#09528E",
     pickerBg: "#F1F5F9",
     pickerColor: "#0F172A",
@@ -72,14 +70,12 @@ const P = {
   },
 };
 
-const ThemedInput = ({
+const TI = ({
   value,
   onChangeText,
   placeholder,
   multiline,
   editable,
-  keyboardType,
-  autoCapitalize,
   style,
   colors,
 }) => (
@@ -103,18 +99,9 @@ const ThemedInput = ({
     placeholderTextColor={colors.textMuted}
     multiline={multiline}
     editable={editable}
-    keyboardType={keyboardType}
-    autoCapitalize={autoCapitalize}
   />
 );
-
-const ThemedPicker = ({
-  selectedValue,
-  onValueChange,
-  enabled,
-  children,
-  colors,
-}) => (
+const TP = ({ selectedValue, onValueChange, enabled, children, colors }) => (
   <View
     style={{
       backgroundColor: colors.pickerBg,
@@ -141,7 +128,6 @@ const ThemedPicker = ({
   </View>
 );
 
-//CONSTANTES
 const EMISOR_KEY = "pase_salida_emisor";
 const EMISOR_DEFAULT = {
   nombre: "Marco Antonio Aguilera",
@@ -154,16 +140,16 @@ export default function PaseSalidaScreen() {
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
   const { showAlert } = useAlert();
-
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  //EMISOR
+  const { camposExtra, tablasExtra } = usePlantillaDinamica("PASE_SALIDA");
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
+
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [editandoEmisor, setEditandoEmisor] = useState(false);
-
-  //RECEPTOR
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
@@ -174,19 +160,13 @@ export default function PaseSalidaScreen() {
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
 
-  //DOCUMENTO
   const [tituloDoc, setTituloDoc] = useState("Pase de Salida");
   const [motivoDesc, setMotivoDesc] = useState("");
-  const [empManual, setEmpManual] = useState("");
-
-  // EQUIPOS
   const [equiposBD, setEquiposBD] = useState([]);
   const [equiposItems, setEquiposItems] = useState([]);
   const [equipoSelId, setEquipoSelId] = useState("");
-
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
-
   const fechaHoy = new Date().toLocaleDateString("es-HN", {
     day: "numeric",
     month: "long",
@@ -194,7 +174,7 @@ export default function PaseSalidaScreen() {
   });
 
   useEffect(() => {
-    const cargarTodo = async () => {
+    (async () => {
       try {
         const raw = await AsyncStorage.getItem(EMISOR_KEY);
         if (raw) {
@@ -213,90 +193,111 @@ export default function PaseSalidaScreen() {
         setReceptoresBD(resRec.data);
         setEmpleadosBD(resEmp.data);
         setEquiposBD(resEq.data);
-      } catch (err) {
-        console.error("Error cargando datos:", err);
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarTodo();
+    })();
   }, []);
 
-  //cargar modo vista
   useEffect(() => {
-    const cargarPase = async () => {
-      if (!id) return;
+    if (!id) return;
+    (async () => {
       try {
         const res = await api.get(`/actas/pase-salida/${id}`);
         const pase = res.data;
         if (!pase) return;
-
         const raw = await AsyncStorage.getItem(EMISOR_KEY);
         if (raw) {
           const e = JSON.parse(raw);
           setEmisorNombre(e.nombre || EMISOR_DEFAULT.nombre);
           setEmisorCargo(e.cargo || EMISOR_DEFAULT.cargo);
         }
-
         setTituloDoc(pase.titulo || "Pase de Salida");
         setMotivoDesc(pase.motivo || "");
         setReceptorSelNombre(pase.receptor?.nombre || "");
         setReceptorEmpresa(pase.receptor?.empresa || "");
         setCorrelativo(pase.correlativo || "");
-
-        if (pase.items?.length > 0) {
+        if (pase.items?.length > 0)
           setEquiposItems(
             pase.items.map((item, idx) => ({
               ...item,
               _idTemporal: idx.toString(),
             })),
           );
+        //CAMPOS EXTRA
+        if (pase.campos_extra) {
+          const parsed =
+            typeof pase.campos_extra === "string"
+              ? JSON.parse(pase.campos_extra)
+              : pase.campos_extra;
+          setValoresCamposExtra(parsed.campos || {});
+          setFilasTablas(parsed.tablas || {});
         }
-      } catch (err) {
-        console.error("Error trayendo pase:", err);
-        mostrarAlerta(
-          "Error",
-          "No se pudo cargar el detalle del pase de salida.",
-        );
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarPase();
+    })();
   }, [id]);
 
-  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    const alertButtons =
-      botones.length > 0
-        ? botones.map((btn) => ({
-            text: btn.text,
-            style:
-              btn.style === "cancel"
-                ? "cancel"
-                : btn.style === "destructive"
-                  ? "danger"
-                  : "primary",
-            onPress: btn.onPress,
-          }))
-        : [{ text: "Aceptar" }];
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const n = [...(prev[tablaId] || [])];
+        n[index] = { ...n[index], [colId]: valor };
+        return { ...prev, [tablaId]: n };
+      }),
+    [],
+  );
 
+  const mostrarAlerta = (titulo, mensaje = "", botones = []) =>
     showAlert({
       title: titulo,
       message: mensaje,
-      buttons: alertButtons,
+      buttons:
+        botones.length > 0
+          ? botones.map((b) => ({
+              text: b.text,
+              style:
+                b.style === "cancel"
+                  ? "cancel"
+                  : b.style === "danger"
+                    ? "danger"
+                    : "primary",
+              onPress: b.onPress,
+            }))
+          : [{ text: "Aceptar" }],
     });
-  };
 
   const guardarEmisor = async () => {
     if (!emisorNombre.trim()) {
-      mostrarAlerta("Atención", "El nombre del firmante no puede estar vacío.");
+      mostrarAlerta("Atención", "El nombre no puede estar vacío.");
       return;
     }
-    try {
-      await AsyncStorage.setItem(
-        EMISOR_KEY,
-        JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
-      );
-      setEditandoEmisor(false);
-    } catch {
-      mostrarAlerta("Error", "No se pudieron guardar los datos del firmante.");
-    }
+    await AsyncStorage.setItem(
+      EMISOR_KEY,
+      JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
+    );
+    setEditandoEmisor(false);
   };
 
   const agregarEquipo = () => {
@@ -312,8 +313,8 @@ export default function PaseSalidaScreen() {
       (e) => String(e.idEquipo) === String(equipoSelId),
     );
     if (!eq) return;
-    setEquiposItems([
-      ...equiposItems,
+    setEquiposItems((prev) => [
+      ...prev,
       {
         idEquipo: eq.idEquipo,
         marca: eq.marca || "N/A",
@@ -325,13 +326,10 @@ export default function PaseSalidaScreen() {
     setEquipoSelId("");
   };
 
-  const eliminarEquipo = (idTemp) =>
-    setEquiposItems(equiposItems.filter((i) => i._idTemporal !== idTemp));
-
-  const cancelar = () => {
+  const cancelar = () =>
     mostrarAlerta(
       "¿Estás seguro?",
-      "Si cancelas, perderás todos los datos ingresados.",
+      "Si cancelas, perderás los datos ingresados.",
       [
         { text: "No, continuar", style: "cancel" },
         {
@@ -341,7 +339,6 @@ export default function PaseSalidaScreen() {
         },
       ],
     );
-  };
 
   const getNombreReceptor = () =>
     isReadOnly
@@ -351,10 +348,8 @@ export default function PaseSalidaScreen() {
         : receptorSelNombre;
   const getEmpresaReceptor = () => {
     if (isReadOnly) return receptorEmpresa;
-    if (tipoReceptor === TIPO_RECEPTOR.EMPLEADO) {
-      return "CONADEH";
-    }
-    return receptorEmpresa || empManual;
+    if (tipoReceptor === TIPO_RECEPTOR.EMPLEADO) return "CONADEH";
+    return receptorEmpresa;
   };
 
   const guardarPase = async () => {
@@ -382,31 +377,31 @@ export default function PaseSalidaScreen() {
       mostrarAlerta("Error", "Agrega al menos un equipo.");
       return;
     }
-
     await AsyncStorage.setItem(
       EMISOR_KEY,
       JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
     );
-
     const payload = {
       idEmpleados: idEmp,
       idReceptores: idRec,
       emp_PSEnc: getEmpresaReceptor(),
       motivo_PSEnc: motivoDesc,
       titulo_PSEnc: tituloDoc,
+      campos_extra: JSON.stringify({
+        campos: valoresCamposExtra,
+        tablas: filasTablas,
+      }),
       items: equiposItems.map((i) => ({ idEquipo: i.idEquipo })),
     };
-
     try {
       const response = await api.post("/actas/pase-salida", payload);
-      const correlativoNuevo = response.data.correlativo || "";
-      setCorrelativo(correlativoNuevo);
-      await generarPDF(correlativoNuevo);
+      setCorrelativo(response.data.correlativo || "");
+      await generarPDF(response.data.correlativo || "");
       router.replace("/dashboard");
     } catch (error) {
       mostrarAlerta(
         "Error al guardar",
-        error.response?.data?.error || "Ocurrió un error inesperado.",
+        error.response?.data?.error || "Error inesperado.",
       );
     }
   };
@@ -414,14 +409,13 @@ export default function PaseSalidaScreen() {
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
-      mostrarAlerta("Atención", "Guarda el pase primero para generar el PDF.");
+      mostrarAlerta("Atención", "Guarda el pase primero.");
       return;
     }
     if (equiposItems.length === 0) {
       mostrarAlerta("Atención", "No hay equipos para mostrar.");
       return;
     }
-
     setIsPrinting(true);
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
@@ -430,12 +424,8 @@ export default function PaseSalidaScreen() {
           getLogoURIs(),
           obtenerPlantillaActiva("PASE_SALIDA"),
         ]);
-
       const nombreRec = getNombreReceptor();
       const empresaRec = getEmpresaReceptor();
-
-      const parrafoPersonalizado = `Por este medio se hace entrega a ${nombreRec || "—"} de la Empresa ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`;
-
       const htmlContent = generarHTMLPaseSalida({
         data: {
           emisorNombre,
@@ -444,70 +434,61 @@ export default function PaseSalidaScreen() {
           receptorEmpresa: empresaRec,
           motivo: motivoDesc,
           titulo: tituloDoc,
-          parrafoIntro: parrafoPersonalizado,
+          parrafoIntro: `Por este medio se hace entrega a ${nombreRec || "—"} de la Empresa ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`,
           correlativoFinal,
           items: equiposItems.map((eq) => ({
             marca: eq.marca || "N/A",
             modelo: eq.modelo || "N/A",
             serie: eq.serie || "N/A",
           })),
+          valoresCamposExtra,
+          filasTablas,
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
       });
-
-      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
         if (typeof window.html2pdf === "undefined") {
           await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src =
+            const s = document.createElement("script");
+            s.src =
               "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
           });
         }
-
-        const opt = {
-          margin: [0, 0, 0, 0],
-          filename: `Pase_Salida_${correlativoFinal || "temp"}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            letterRendering: true,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        };
-
-        try {
-          await window.html2pdf().set(opt).from(htmlContent, "string").save();
-        } catch (err) {
-          console.error("html2pdf error:", err);
-          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
-        }
+        await window
+          .html2pdf()
+          .set({
+            margin: [0, 0, 0, 0],
+            filename: `Pase_Salida_${correlativoFinal || "temp"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+            },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(htmlContent, "string")
+          .save();
       } else {
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,
         });
-        const puedCompartir = await Sharing.isAvailableAsync();
-        if (puedCompartir) {
+        if (await Sharing.isAvailableAsync())
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Acta",
+            dialogTitle: "Guardar Pase",
             UTI: "com.adobe.pdf",
           });
-        } else {
-          mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-        }
+        else mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
       }
     } catch (err) {
-      console.error("Error al generar PDF:", err.message);
-      mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
+      mostrarAlerta("Error", "No se pudo generar: " + err.message);
     } finally {
       setIsPrinting(false);
     }
@@ -577,22 +558,13 @@ export default function PaseSalidaScreen() {
           borderRadius: 6,
           alignItems: "center",
         },
-        toggleBtnActive: {
-          backgroundColor: c.primary,
-          elevation: 2,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.15,
-          shadowRadius: 3,
-        },
+        toggleBtnActive: { backgroundColor: c.primary, elevation: 2 },
         toggleBtnText: {
           fontSize: 14,
           fontWeight: "600",
           color: c.toggleInactive,
         },
-        toggleBtnTextActive: {
-          color: "#fff",
-        },
+        toggleBtnTextActive: { color: "#fff" },
         receptorInfo: { fontSize: 13, color: c.textMuted, marginTop: 6 },
         label: {
           fontSize: 14,
@@ -600,26 +572,7 @@ export default function PaseSalidaScreen() {
           color: c.textMuted,
           marginBottom: 6,
         },
-        input: {
-          backgroundColor: c.inputBg,
-          borderWidth: 1,
-          borderColor: c.inputBorder,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          fontSize: 15,
-          color: c.text,
-        },
         readOnlyInput: { backgroundColor: c.surface2, color: c.textMuted },
-        pickerWrapper: {
-          backgroundColor: c.pickerBg,
-          borderWidth: 1,
-          borderColor: c.border2,
-          borderRadius: 10,
-          justifyContent: "center",
-          height: 44,
-          marginBottom: 4,
-        },
         tablaRow: {
           flexDirection: "row",
           alignItems: "center",
@@ -685,9 +638,8 @@ export default function PaseSalidaScreen() {
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE PASE DE SALIDA" : "NUEVO PASE DE SALIDA"}
         </Text>
-
         <View style={styles.formContainer}>
-          {/* CARD: Firmante */}
+          {/* Firmante */}
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.sectionTitle}>Firmante (Emisor)</Text>
@@ -714,11 +666,10 @@ export default function PaseSalidaScreen() {
                 </TouchableOpacity>
               )}
             </View>
-
             {editandoEmisor ? (
               <>
                 <Text style={styles.label}>Nombre:</Text>
-                <ThemedInput
+                <TI
                   value={emisorNombre}
                   onChangeText={setEmisorNombre}
                   placeholder="Nombre completo..."
@@ -726,7 +677,7 @@ export default function PaseSalidaScreen() {
                   style={{ marginBottom: 12 }}
                 />
                 <Text style={styles.label}>Cargo:</Text>
-                <ThemedInput
+                <TI
                   value={emisorCargo}
                   onChangeText={setEmisorCargo}
                   placeholder="Cargo..."
@@ -736,118 +687,85 @@ export default function PaseSalidaScreen() {
                   Estos datos se guardan como valores por defecto.
                 </Text>
               </>
+            ) : emisorNombre ? (
+              <>
+                <Text style={styles.emisorNombre}>{emisorNombre}</Text>
+                <Text style={styles.emisorCargo}>{emisorCargo}</Text>
+              </>
             ) : (
-              <View>
-                {emisorNombre ? (
-                  <>
-                    <Text style={styles.emisorNombre}>{emisorNombre}</Text>
-                    <Text style={styles.emisorCargo}>{emisorCargo}</Text>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.sinEmisorBtn}
-                    onPress={() => setEditandoEmisor(true)}
-                  >
-                    <MaterialCommunityIcons
-                      name="account-edit-outline"
-                      size={20}
-                      color={c.accent}
-                    />
-                    <Text style={styles.sinEmisorText}>
-                      Configura el firmante — presiona "Cambiar"
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.sinEmisorBtn}
+                onPress={() => setEditandoEmisor(true)}
+              >
+                <MaterialCommunityIcons
+                  name="account-edit-outline"
+                  size={20}
+                  color={c.accent}
+                />
+                <Text style={styles.sinEmisorText}>
+                  Configura el firmante — presiona "Cambiar"
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* CARD: Destinatario */}
+          {/* Destinatario */}
           <View style={styles.card}>
             <View style={{ height: 12 }} />
-
             {isReadOnly ? (
-              <>
-                <Text style={styles.label}>Nombre:</Text>
-                <ThemedInput
-                  value={`${receptorSelNombre}${receptorEmpresa ? ` — ${receptorEmpresa}` : ""}`}
-                  editable={false}
-                  style={styles.readOnlyInput}
-                  colors={c}
-                />
-              </>
+              <TI
+                value={`${receptorSelNombre}${receptorEmpresa ? ` — ${receptorEmpresa}` : ""}`}
+                editable={false}
+                style={styles.readOnlyInput}
+                colors={c}
+              />
             ) : (
               <>
-                {/* TOGGLE*/}
                 <View style={styles.toggleContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.EMPLEADO);
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorEmpresa("");
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Empleado
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.RECEPTOR);
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorEmpresa("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Receptor externo
-                    </Text>
-                  </TouchableOpacity>
+                  {[TIPO_RECEPTOR.EMPLEADO, TIPO_RECEPTOR.RECEPTOR].map(
+                    (tipo) => (
+                      <TouchableOpacity
+                        key={tipo}
+                        style={[
+                          styles.toggleBtn,
+                          tipoReceptor === tipo && styles.toggleBtnActive,
+                        ]}
+                        onPress={() => {
+                          setTipoReceptor(tipo);
+                          setReceptorSelId("");
+                          setReceptorSelNombre("");
+                          setReceptorEmpresa("");
+                          setEmpleadoSelId("");
+                          setEmpleadoSelNombre("");
+                          setEmpleadoCargo("");
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.toggleBtnText,
+                            tipoReceptor === tipo && styles.toggleBtnTextActive,
+                          ]}
+                        >
+                          {tipo === TIPO_RECEPTOR.EMPLEADO
+                            ? "Empleado"
+                            : "Receptor externo"}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </View>
-
-                <View style={{ height: 10 }} />
-
                 {tipoReceptor === TIPO_RECEPTOR.RECEPTOR ? (
                   <>
                     <Text style={styles.label}>Seleccionar receptor:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(receptorSelId)}
                       onValueChange={(val) => {
                         setReceptorSelId(val);
-                        const rec = receptoresBD.find(
+                        const r = receptoresBD.find(
                           (r) => String(r.idReceptores) === String(val),
                         );
-                        setReceptorSelNombre(rec?.nomRec || "");
-                        setReceptorEmpresa(rec?.emprRec || "");
+                        setReceptorSelNombre(r?.nomRec || "");
+                        setReceptorEmpresa(r?.emprRec || "");
                       }}
                       colors={c}
                     >
@@ -858,34 +776,34 @@ export default function PaseSalidaScreen() {
                       />
                       {receptoresBD
                         .filter((r) => r.estRec === "Activo")
-                        .map((rec) => (
+                        .map((r) => (
                           <Picker.Item
-                            key={`rec-${rec.idReceptores}`}
-                            label={`${rec.nomRec} — ${rec.emprRec}`}
-                            value={String(rec.idReceptores)}
+                            key={r.idReceptores}
+                            label={`${r.nomRec} — ${r.emprRec}`}
+                            value={String(r.idReceptores)}
                             color={c.pickerColor}
                           />
                         ))}
-                    </ThemedPicker>
-                    {receptorEmpresa ? (
+                    </TP>
+                    {receptorEmpresa && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>Empresa: </Text>
                         {receptorEmpresa}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 ) : (
                   <>
                     <Text style={styles.label}>Seleccionar empleado:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(empleadoSelId)}
                       onValueChange={(val) => {
                         setEmpleadoSelId(val);
-                        const emp = empleadosBD.find(
+                        const e = empleadosBD.find(
                           (e) => String(e.idEmpleados) === String(val),
                         );
-                        setEmpleadoSelNombre(emp?.nomEmp || "");
-                        setEmpleadoCargo(emp?.cargoEmp || "");
+                        setEmpleadoSelNombre(e?.nomEmp || "");
+                        setEmpleadoCargo(e?.cargoEmp || "");
                       }}
                       colors={c}
                     >
@@ -894,31 +812,31 @@ export default function PaseSalidaScreen() {
                         value=""
                         color={c.textMuted}
                       />
-                      {empleadosBD.map((emp) => (
+                      {empleadosBD.map((e) => (
                         <Picker.Item
-                          key={`emp-${emp.idEmpleados}`}
-                          label={emp.nomEmp}
-                          value={String(emp.idEmpleados)}
+                          key={e.idEmpleados}
+                          label={e.nomEmp}
+                          value={String(e.idEmpleados)}
                           color={c.pickerColor}
                         />
                       ))}
-                    </ThemedPicker>
-                    {empleadoCargo ? (
+                    </TP>
+                    {empleadoCargo && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>Cargo: </Text>
                         {empleadoCargo}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 )}
               </>
             )}
           </View>
 
-          {/* CARD: Título y Motivo */}
+          {/* Título y Motivo */}
           <View style={styles.card}>
             <Text style={styles.label}>Título del documento:</Text>
-            <ThemedInput
+            <TI
               value={tituloDoc}
               onChangeText={setTituloDoc}
               placeholder="Ej: Pase de Salida Impresora"
@@ -927,7 +845,7 @@ export default function PaseSalidaScreen() {
               style={{ marginBottom: 14 }}
             />
             <Text style={styles.label}>Motivo (acción que realizará):</Text>
-            <ThemedInput
+            <TI
               value={motivoDesc}
               onChangeText={setMotivoDesc}
               multiline
@@ -936,20 +854,25 @@ export default function PaseSalidaScreen() {
               editable={!isReadOnly}
               colors={c}
             />
-            <Text style={styles.hintText}>
-              Se usará en: "...para que{" "}
-              <Text style={{ fontStyle: "italic" }}>[motivo]</Text> que a
-              continuación se describe"
+            <Text
+              style={{
+                fontSize: 11,
+                color: c.textMuted,
+                marginTop: 8,
+                fontStyle: "italic",
+              }}
+            >
+              Se usará en: "...para que [motivo] que a continuación se describe"
             </Text>
           </View>
 
-          {/* CARD: Agregar equipos */}
+          {/* Agregar equipo */}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>AGREGAR EQUIPO</Text>
               <View style={{ height: 12 }} />
               <Text style={styles.label}>Seleccionar equipo:</Text>
-              <ThemedPicker
+              <TP
                 selectedValue={String(equipoSelId)}
                 onValueChange={setEquipoSelId}
                 colors={c}
@@ -961,13 +884,13 @@ export default function PaseSalidaScreen() {
                 />
                 {equiposBD.map((eq) => (
                   <Picker.Item
-                    key={`eq-${eq.idEquipo}`}
+                    key={eq.idEquipo}
                     label={`${eq.tipo ? eq.tipo + " — " : ""}${eq.marca} ${eq.modelo} | S/N: ${eq.serie}`}
                     value={String(eq.idEquipo)}
                     color={c.pickerColor}
                   />
                 ))}
-              </ThemedPicker>
+              </TP>
               <TouchableOpacity
                 style={[
                   styles.saveBtn,
@@ -986,20 +909,19 @@ export default function PaseSalidaScreen() {
             </View>
           )}
 
-          {/* CARD: Lista de equipos */}
+          {/* Lista equipos */}
           {equiposItems.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.label}>Equipos ({equiposItems.length}):</Text>
               <View style={[styles.tablaRow, styles.tablaHeader]}>
-                <Text style={[styles.tablaCell, styles.tablaCellHeader]}>
-                  Marca
-                </Text>
-                <Text style={[styles.tablaCell, styles.tablaCellHeader]}>
-                  Modelo
-                </Text>
-                <Text style={[styles.tablaCell, styles.tablaCellHeader]}>
-                  S/N
-                </Text>
+                {["Marca", "Modelo", "S/N"].map((h) => (
+                  <Text
+                    key={h}
+                    style={[styles.tablaCell, styles.tablaCellHeader]}
+                  >
+                    {h}
+                  </Text>
+                ))}
                 {!isReadOnly && <View style={{ width: 34 }} />}
               </View>
               {equiposItems.map((eq) => (
@@ -1009,7 +931,13 @@ export default function PaseSalidaScreen() {
                   <Text style={styles.tablaCell}>{eq.serie}</Text>
                   {!isReadOnly && (
                     <TouchableOpacity
-                      onPress={() => eliminarEquipo(eq._idTemporal)}
+                      onPress={() =>
+                        setEquiposItems(
+                          equiposItems.filter(
+                            (i) => i._idTemporal !== eq._idTemporal,
+                          ),
+                        )
+                      }
                       style={{ width: 34, alignItems: "center" }}
                     >
                       <MaterialCommunityIcons
@@ -1024,7 +952,20 @@ export default function PaseSalidaScreen() {
             </View>
           )}
 
-          {/* BOTONES */}
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
+
+          {/* Botones */}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity style={styles.saveBtn} onPress={guardarPase}>

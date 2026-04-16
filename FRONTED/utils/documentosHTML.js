@@ -1,8 +1,8 @@
-//FORMATOS PDF EN HTML
-
+// GENERADORES HTML PARA PDF
 const PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
 
+//Estilos base compartidos
 const ESTILOS_CSS = (colorLinea) => `
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -13,12 +13,7 @@ const ESTILOS_CSS = (colorLinea) => `
     font-size: 11.5px;
     line-height: 1.6;
   }
-  .doc-body {
-    padding: 20mm 18mm;
-    width: 100%;
-    max-width: 210mm;
-    margin: 0 auto;
-  }
+  .doc-body { padding: 18mm 16mm; width: 100%; max-width: 210mm; margin: 0 auto; }
   table { width: 100%; border-collapse: collapse; }
   .header-line {
     border-bottom: 3px solid ${colorLinea};
@@ -33,15 +28,29 @@ const ESTILOS_CSS = (colorLinea) => `
     background-color: #f8f9fa; border: 1px solid #dee2e6;
     padding: 6px 8px; font-size: 10px; color: #444; text-align: center;
   }
-  .tabla-datos td {
-    border: 1px solid #dee2e6; padding: 6px 8px; font-size: 11px;
-  }
+  .tabla-datos td { border: 1px solid #dee2e6; padding: 6px 8px; font-size: 11px; }
   .firmas { margin-top: 60px; page-break-inside: avoid; width: 100%; border-collapse: collapse; }
   .firma-linea { border-top: 1px solid #000; width: 80%; margin: 0 auto 5px auto; }
   .evidencias-bloque { margin-top: 18px; page-break-inside: avoid; }
   .evidencias-grid { display: grid; gap: 8px; justify-content: center; margin-bottom: 20px; }
   .evidencias-grid img { object-fit: cover; border-radius: 6px; border: 1px solid #ccc; display: block; }
   .parrafo { margin-bottom: 14px; text-align: justify; line-height: 1.8; word-break: break-word; }
+  .extras-section {
+    border-top: 1px dashed ${colorLinea};
+    margin-top: 16px; padding-top: 14px;
+  }
+  .extras-section-title {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: ${colorLinea}; margin-bottom: 10px;
+  }
+  .campo-extra { margin-bottom: 10px; }
+  .campo-extra strong { font-size: 11px; display: inline-block; min-width: 100px; }
+  .campo-extra span { font-size: 11px; }
+  .tabla-extra { margin: 12px 0; }
+  .tabla-extra p { font-weight: 700; font-size: 11px; margin-bottom: 5px; }
+  .tabla-extra table { border-collapse: collapse; width: 100%; }
+  .tabla-extra th { border: 1px solid #555; padding: 5px 8px; background: #f0f0f0; font-size: 10px; }
+  .tabla-extra td { border: 1px solid #555; padding: 5px 8px; font-size: 10px; }
   @media print { body { background: #fff; } }
 `;
 
@@ -60,6 +69,7 @@ const wrapHTML = (titulo, contenido, colorLinea = "#1eb9de") =>
 </body>
 </html>`;
 
+//Bloques reutilizables
 const encabezadoHTML = (
   uriConadeh,
   uriInfo,
@@ -107,6 +117,7 @@ const firmasHTML = (izqNom, izqCar, derNom, derCar) => `
     </tr>
   </table>`;
 
+//HTML de imágenes + firmas
 const imagenesConFirmasHTML = (
   imagenesBase64,
   izqNom,
@@ -137,13 +148,77 @@ const imagenesConFirmasHTML = (
   </div>`;
 };
 
-//ACTA ENTREGA
+//Helper: genera HTML para campos y tablas extra de la plantilla 
+const generarExtrasHTML = (
+  config,
+  valoresCamposExtra = {},
+  filasTablas = {},
+) => {
+  const camposExtra = config?.camposExtra || [];
+  const tablasExtra = config?.tablasExtra || [];
+
+  if (camposExtra.length === 0 && tablasExtra.length === 0) return "";
+
+  const colorLinea = config?.colorLinea || "#09528e";
+
+  // Campos simples
+  const camposHTML = camposExtra
+    .map((campo) => {
+      const valor = valoresCamposExtra?.[campo.id];
+      if (!valor && valor !== 0) return "";
+      return `
+        <div class="campo-extra">
+          <strong>${campo.label}:</strong>
+          <span style="margin-left:8px;">${valor}</span>
+        </div>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  // Tablas
+  const tablasHTML = tablasExtra
+    .map((tabla) => {
+      const filas = filasTablas?.[tabla.id] || [];
+      if (filas.length === 0) return "";
+
+      const ths = tabla.columnas.map((col) => `<th>${col.label}</th>`).join("");
+
+      const trs = filas
+        .map((fila) => {
+          const tds = tabla.columnas
+            .map((col) => `<td>${fila[col.id] || ""}</td>`)
+            .join("");
+          return `<tr>${tds}</tr>`;
+        })
+        .join("");
+
+      return `
+        <div class="tabla-extra">
+          <p>${tabla.titulo}</p>
+          <table>
+            <thead><tr>${ths}</tr></thead>
+            <tbody>${trs}</tbody>
+          </table>
+        </div>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  if (!camposHTML && !tablasHTML) return "";
+
+  return `
+    <div class="extras-section" style="border-top-color:${colorLinea};">
+      ${camposHTML}
+      ${tablasHTML}
+    </div>`;
+};
+
+// ACTA ENTREGA
 export const generarHTMLEntrega = ({
   data,
   config,
   logos,
   imagenesBase64 = [],
-  imagenesHTML = "",
 }) => {
   const {
     emisorNombre = "",
@@ -156,19 +231,21 @@ export const generarHTMLEntrega = ({
     fecha = "",
     correlativoFinal = "",
     items = [],
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
   const colorLinea = config?.colorLinea || "#1eb9de";
   const columnasTabla = config?.columnasTabla || ["marca", "modelo", "serie"];
+  const mostrarNumFicha = config?.mostrarNumFicha || false;
+  const mostrarNumInv = config?.mostrarNumInv || false;
   const colLabels = {
     marca: config?.labelMarca || "Marca",
     modelo: config?.labelModelo || "Modelo",
     serie: config?.labelSerie || "S/N - Inventario",
     asignado: config?.labelAsignado || "Asignado a",
   };
-  const mostrarNumFicha = config?.mostrarNumFicha || false;
-  const mostrarNumInv = config?.mostrarNumInv || false;
 
   const thead = columnasTabla
     .map(
@@ -206,40 +283,28 @@ export const generarHTMLEntrega = ({
     .join("");
 
   const tablaHTML = thead
-    ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;">
-         <thead><tr>${thead}</tr></thead>
-         <tbody>${tbody}</tbody>
-       </table>`
+    ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;"><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`
     : "";
 
-  // Compatibilidad: acepta imagenesBase64 (nuevo) o imagenesHTML (legado)
-  const bloqueFinal =
-    imagenesBase64.length > 0
-      ? imagenesConFirmasHTML(
-          imagenesBase64,
-          receptorNombre,
-          receptorCargo,
-          emisorNombre,
-          emisorCargo,
-        )
-      : `${imagenesHTML}${firmasHTML(receptorNombre, receptorCargo, emisorNombre, emisorCargo)}`;
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
+  const bloqueFinal = imagenesConFirmasHTML(
+    imagenesBase64,
+    receptorNombre,
+    receptorCargo,
+    emisorNombre,
+    emisorCargo,
+  );
 
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "Acta de Entrega", correlativoFinal)}
     <table style="width:100%;margin-bottom:18px;border-collapse:collapse;">
       <tr>
         <td style="font-weight:bold;width:70px;padding:3px 4px;font-size:11px;">Para:</td>
-        <td style="padding:3px 4px;font-size:11px;">
-          <strong>${receptorNombre}</strong><br/>
-          <span style="font-size:10px;color:#444;">${receptorCargo}</span>
-        </td>
+        <td style="padding:3px 4px;font-size:11px;"><strong>${receptorNombre}</strong><br/><span style="font-size:10px;color:#444;">${receptorCargo}</span></td>
       </tr>
       <tr>
         <td style="font-weight:bold;padding:3px 4px;font-size:11px;">De:</td>
-        <td style="padding:3px 4px;font-size:11px;">
-          <strong>${emisorNombre}</strong><br/>
-          <span style="font-size:10px;color:#444;">${emisorCargo}</span>
-        </td>
+        <td style="padding:3px 4px;font-size:11px;"><strong>${emisorNombre}</strong><br/><span style="font-size:10px;color:#444;">${emisorCargo}</span></td>
       </tr>
       ${asunto ? `<tr><td style="font-weight:bold;padding:3px 4px;font-size:11px;">Asunto:</td><td style="padding:3px 4px;font-size:11px;">${asunto}</td></tr>` : ""}
       ${config?.mostrarDescripcion && descripcion ? `<tr><td style="font-weight:bold;padding:3px 4px;font-size:11px;">Descripción:</td><td style="padding:3px 4px;font-size:11px;">${descripcion}</td></tr>` : ""}
@@ -252,6 +317,7 @@ export const generarHTMLEntrega = ({
     ${config?.mostrarParrafoIntro && config?.textoIntro ? `<p style="font-size:11px;text-align:justify;margin-bottom:14px;">${config.textoIntro}</p>` : ""}
     ${tablaHTML}
     ${config?.mostrarObservacion && observacion ? `<p style="font-size:11px;margin-top:8px;margin-bottom:12px;"><strong>Pd.</strong> ${observacion}</p>` : ""}
+    ${extrasHTML}
     ${bloqueFinal}`;
 
   return wrapHTML("Acta de Entrega", contenido, colorLinea);
@@ -263,7 +329,6 @@ export const generarHTMLRetiro = ({
   config,
   logos,
   imagenesBase64 = [],
-  imagenesHTML = "",
 }) => {
   const {
     emisorNombre = "",
@@ -276,19 +341,21 @@ export const generarHTMLRetiro = ({
     fecha = "",
     correlativoFinal = "",
     items = [],
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
   const colorLinea = config?.colorLinea || "#1eb9de";
   const columnasTabla = config?.columnasTabla || ["marca", "modelo", "serie"];
+  const mostrarNumFicha = config?.mostrarNumFicha || false;
+  const mostrarNumInv = config?.mostrarNumInv || false;
   const colLabels = {
     marca: config?.labelMarca || "Marca",
     modelo: config?.labelModelo || "Modelo",
     serie: config?.labelSerie || "S/N - Inventario",
     asignado: config?.labelAsignado || "Asignado a",
   };
-  const mostrarNumFicha = config?.mostrarNumFicha || false;
-  const mostrarNumInv = config?.mostrarNumInv || false;
 
   const thead = columnasTabla
     .map(
@@ -326,22 +393,17 @@ export const generarHTMLRetiro = ({
     .join("");
 
   const tablaHTML = thead
-    ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;">
-         <thead><tr>${thead}</tr></thead>
-         <tbody>${tbody}</tbody>
-       </table>`
+    ? `<table style="width:100%;border-collapse:collapse;margin:14px 0;"><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`
     : "";
 
-  const bloqueFinal =
-    imagenesBase64.length > 0
-      ? imagenesConFirmasHTML(
-          imagenesBase64,
-          receptorNombre,
-          receptorCargo,
-          emisorNombre,
-          emisorCargo,
-        )
-      : `${imagenesHTML}${firmasHTML(receptorNombre, receptorCargo, emisorNombre, emisorCargo)}`;
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
+  const bloqueFinal = imagenesConFirmasHTML(
+    imagenesBase64,
+    receptorNombre,
+    receptorCargo,
+    emisorNombre,
+    emisorCargo,
+  );
 
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "Acta de Retiro", correlativoFinal)}
@@ -365,12 +427,13 @@ export const generarHTMLRetiro = ({
     ${config?.mostrarParrafoIntro && config?.textoIntro ? `<p style="font-size:11px;text-align:justify;margin-bottom:14px;">${config.textoIntro}</p>` : ""}
     ${tablaHTML}
     ${config?.mostrarObservacion && observacion ? `<p style="font-size:11px;margin-top:8px;margin-bottom:12px;"><strong>Pd.</strong> ${observacion}</p>` : ""}
+    ${extrasHTML}
     ${bloqueFinal}`;
 
   return wrapHTML("Acta de Retiro", contenido, colorLinea);
 };
 
-// ACTA RECEPCION
+//ACTA RECEPCION
 export const generarHTMLRecepcion = ({ data, config, logos }) => {
   const {
     emisorNombre = "",
@@ -380,6 +443,8 @@ export const generarHTMLRecepcion = ({ data, config, logos }) => {
     items = [],
     correlativoFinal = "",
     tituloActa = "ACTA DE RECEPCIÓN",
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
@@ -418,12 +483,8 @@ export const generarHTMLRecepcion = ({ data, config, logos }) => {
       let linea1 = item.descr_prod || "Producto";
       if (precioUSD && !isNaN(precioUSD)) {
         linea1 += `, precio: $${precioUSD.toFixed(2)}`;
-        if (precioLPS && !isNaN(precioLPS)) {
-          linea1 += `, el equivalente de ${precioLPS.toLocaleString("es-HN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })} lempiras`;
-        }
+        if (precioLPS && !isNaN(precioLPS))
+          linea1 += `, el equivalente de ${precioLPS.toLocaleString("es-HN", { minimumFractionDigits: 2 })} lempiras`;
       }
       if (!linea1.endsWith(".")) linea1 += ".";
 
@@ -444,44 +505,41 @@ export const generarHTMLRecepcion = ({ data, config, logos }) => {
       }
 
       return `
-        <li style="margin-bottom:16px; line-height:1.6; list-style-type: none;">
-          <span style="display:block;">- ${linea1}</span>
-          ${linea2 ? `<span style="display:block; margin-left:15px; font-size:11px;">${linea2}</span>` : ""}
-        </li>`;
+      <li style="margin-bottom:16px;line-height:1.6;list-style-type:none;">
+        <span style="display:block;">- ${linea1}</span>
+        ${linea2 ? `<span style="display:block;margin-left:15px;font-size:11px;">${linea2}</span>` : ""}
+      </li>`;
     })
     .join("");
 
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
+
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, tituloActa, correlativoFinal)}
-    
     <div style="text-align:center;margin-bottom:28px;">
       <div style="font-weight:bold;font-size:14px;text-transform:uppercase;">Unidad de Infotecnología</div>
     </div>
-    
-    <p style="font-size:12px; text-align:justify; margin-bottom:24px; line-height:1.7;">
+    <p style="font-size:12px;text-align:justify;margin-bottom:24px;line-height:1.7;">
       Yo, <strong>${emisorNombre}</strong>, ${emisorCargo}, por este medio hago constar
       que hemos recibido por parte de <strong>${proveedorNombre}</strong>${descripcion ? ", " + descripcion : ""},
       a continuación una descripción del producto recibido:
     </p>
-    
-    <ul style="margin-bottom:40px; padding-left:0; text-align:left;">
+    <ul style="margin-bottom:40px;padding-left:0;text-align:left;">
       ${itemsHTML}
     </ul>
-    
-    <!-- Firma única (solo emisor) -->
-    <div style="display:flex; justify-content:center; margin-top:80px;">
-      <div style="width:350px; text-align:center;">
-        <div class="firma-linea" style="border-top:1px solid #000; margin-bottom:8px;"></div>
+    ${extrasHTML}
+    <div style="display:flex;justify-content:center;margin-top:80px;">
+      <div style="width:350px;text-align:center;">
+        <div class="firma-linea" style="border-top:1px solid #000;margin-bottom:8px;"></div>
         <strong style="font-size:12px;">${emisorNombre}</strong><br/>
-        <span style="font-size:11px; color:#555;">${emisorCargo}</span>
+        <span style="font-size:11px;color:#555;">${emisorCargo}</span>
       </div>
-    </div>
-  `;
+    </div>`;
 
   return wrapHTML(tituloActa, contenido, colorLinea);
 };
 
-// MEMORANDUM
+// MEMORÁNDUM
 export const generarHTMLMemorandum = ({ data, config, logos }) => {
   const {
     emisorNombre = "",
@@ -492,6 +550,8 @@ export const generarHTMLMemorandum = ({ data, config, logos }) => {
     fecha = "",
     correlativoFinal = "",
     items = [],
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
@@ -503,6 +563,8 @@ export const generarHTMLMemorandum = ({ data, config, logos }) => {
         `<p style="margin-bottom:14px;text-align:justify;line-height:1.7;">${it.desc_MMDet || ""}</p>`,
     )
     .join("");
+
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
 
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "MEMORÁNDUM", correlativoFinal)}
@@ -524,6 +586,7 @@ export const generarHTMLMemorandum = ({ data, config, logos }) => {
     <hr style="border:none;border-top:1px solid #ccc;margin-bottom:18px;"/>
     ${parrafos}
     ${config?.mostrarDespedida !== false ? `<p style="margin-top:22px;font-size:12px;">Saludos cordiales,</p>` : ""}
+    ${extrasHTML}
     <div style="text-align:center;margin-top:80px;">
       <div style="width:280px;border-top:1px solid #000;margin:0 auto 5px auto;padding-top:5px;">
         <strong>${emisorNombre}</strong><br/><span style="font-size:11px;color:#333;">${emisorCargo}</span>
@@ -544,6 +607,8 @@ export const generarHTMLOficio = ({ data, config, logos }) => {
     asunto = "",
     correlativoFinal = "",
     items = [],
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
@@ -553,6 +618,7 @@ export const generarHTMLOficio = ({ data, config, logos }) => {
   const parrafos = items
     .map((it) => `<p class="parrafo">${it.desc_OfiDet || ""}</p>`)
     .join("");
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
 
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "OFICIO", correlativoFinal)}
@@ -568,6 +634,7 @@ export const generarHTMLOficio = ({ data, config, logos }) => {
     <div style="margin-bottom:18px;font-size:12px;"><strong>Asunto:</strong> ${asunto}</div>
     ${parrafos}
     ${config?.mostrarDespedida !== false ? `<p style="font-size:12px;margin-top:14px;">Saludos cordiales,</p>` : ""}
+    ${extrasHTML}
     <div style="text-align:center;margin-top:80px;">
       <div style="width:300px;border-top:1px solid #000;margin:0 auto 5px auto;padding-top:5px;">
         <strong>${emisorNombre}</strong><br/><span style="font-size:11px;">${emisorCargo}</span>
@@ -587,6 +654,8 @@ export const generarHTMLPaseSalida = ({ data, config, logos }) => {
     motivo = "",
     correlativoFinal = "",
     items = [],
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
@@ -603,6 +672,8 @@ export const generarHTMLPaseSalida = ({ data, config, logos }) => {
     )
     .join("");
 
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
+
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "Pase de Salida", correlativoFinal)}
     <p style="font-size:11.5px;text-align:justify;line-height:1.85;margin-bottom:22px;">
@@ -617,18 +688,18 @@ export const generarHTMLPaseSalida = ({ data, config, logos }) => {
       </tr></thead>
       <tbody>${filas}</tbody>
     </table>
+    ${extrasHTML}
     ${firmasHTML(receptorNombre, receptorEmpresa, emisorNombre, emisorCargo)}`;
 
   return wrapHTML("Pase de Salida", contenido, colorLinea);
 };
 
-//REPORTEE
+//REPORTE DE DAÑO
 export const generarHTMLReporte = ({
   data,
   config,
   logos,
   imagenesBase64 = [],
-  imagenesHTML = "",
 }) => {
   const {
     asignado = "",
@@ -640,19 +711,22 @@ export const generarHTMLReporte = ({
     diagnostico = "",
     recomendaciones = "",
     equipo = {},
+    valoresCamposExtra = {},
+    filasTablas = {},
   } = data || {};
 
   const { uriConadeh = "", uriInfo = "" } = logos || {};
   const colorLinea = config?.colorLinea || "#1eb9de";
 
+  const extrasHTML = generarExtrasHTML(config, valoresCamposExtra, filasTablas);
+
+  // Imágenes dentro del diagnóstico
   const imgEnDiag = (() => {
-    const srcs =
-      imagenesBase64.length > 0 ? imagenesBase64 : imagenesHTML ? [] : [];
-    if (!srcs.length) return imagenesHTML || "";
-    const n = srcs.length,
+    if (!imagenesBase64.length) return "";
+    const n = imagenesBase64.length,
       cols = n <= 4 ? 2 : n <= 9 ? 3 : 4,
       size = n <= 4 ? 130 : n <= 9 ? 100 : 75;
-    const imgs = srcs
+    const imgs = imagenesBase64
       .map(
         (s) =>
           `<img src="${s}" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:4px;border:1px solid #ccc;"/>`,
@@ -696,7 +770,7 @@ export const generarHTMLReporte = ({
       <tr><td colspan="2" style="border:1px solid #888;padding:5px 8px;font-weight:bold;text-transform:uppercase;font-size:11px;">Descripción del Reporte:</td></tr>
       <tr><td colspan="2" style="border:1px solid #888;padding:5px 8px;font-size:11px;">${motivo || "&nbsp;"}</td></tr>
       <tr><td colspan="2" style="border:1px solid #888;padding:5px 8px;font-weight:bold;text-transform:uppercase;font-size:11px;">Diagnóstico:</td></tr>
-      <tr><td colspan="2" style="border:1px solid #888;padding:5px 8px;vertical-align:top;font-size:11px;min-height:${imgEnDiag ? "auto" : "180px"};">
+      <tr><td colspan="2" style="border:1px solid #888;padding:5px 8px;vertical-align:top;font-size:11px;min-height:${imgEnDiag ? "auto" : "160px"};">
         ${diagnostico || "&nbsp;"}${imgEnDiag}
       </td></tr>
       ${
@@ -707,6 +781,7 @@ export const generarHTMLReporte = ({
           : ""
       }
     </table>
+    ${extrasHTML}
     <table style="width:100%;border-collapse:collapse;border:1px solid #888;border-top:none;">
       <tr>
         <td style="border:1px solid #888;padding:6px 10px;width:50%;font-style:italic;font-size:11px;">${asignadoCargo || "Auxiliar Infotecnología"}.</td>

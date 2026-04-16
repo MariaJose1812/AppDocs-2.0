@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,9 @@ import { generarHTMLEntrega } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
 import { Colors } from "../constants/theme";
+
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 
 import Header from "../components/header";
 import Navbar from "../components/navBar";
@@ -152,6 +155,16 @@ export default function ActaEntregaScreen() {
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
+  const {
+    camposExtra,
+    tablasExtra,
+    cargando: cargandoPlantilla,
+  } = usePlantillaDinamica("ENTREGA");
+
+  // Estado para los valores de campos y filas de tablas extra
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
+
   // Estados (sin cambios)
   const [oficinasBD, setOficinasBD] = useState([]);
   const [unidadesList, setUnidadesList] = useState([]);
@@ -232,6 +245,15 @@ export default function ActaEntregaScreen() {
               _idTemporal: Math.random().toString(),
             }));
             setItems(itemsMapeados);
+          }
+
+          if (acta.campos_extra) {
+            const parsed =
+              typeof acta.campos_extra === "string"
+                ? JSON.parse(acta.campos_extra)
+                : acta.campos_extra;
+            setValoresCamposExtra(parsed.campos || {});
+            setFilasTablas(parsed.tablas || {});
           }
 
           if (acta.imagenes && acta.imagenes.length > 0) {
@@ -410,6 +432,28 @@ export default function ActaEntregaScreen() {
     setItems(items.filter((item) => item._idTemporal !== idTemp));
   };
 
+  const handleChangeValor = useCallback((id, valor) =>
+    setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })), []);
+
+  const handleAgregarFila = useCallback((tablaId, filaVacia) =>
+    setFilasTablas((prev) => ({
+      ...prev,
+      [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+    })), []);
+
+  const handleEliminarFila = useCallback((tablaId, index) =>
+    setFilasTablas((prev) => ({
+      ...prev,
+      [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+    })), []);
+
+  const handleCambiarFila = useCallback((tablaId, index, colId, valor) =>
+    setFilasTablas((prev) => {
+      const nuevas = [...(prev[tablaId] || [])];
+      nuevas[index] = { ...nuevas[index], [colId]: valor };
+      return { ...prev, [tablaId]: nuevas };
+    }), []);
+
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
     const alertButtons =
       botones.length > 0
@@ -541,6 +585,13 @@ export default function ActaEntregaScreen() {
       "idReceptores",
       tipoDestinatario === "RECEPTOR" ? parseInt(receptorSelId) : "",
     );
+    formData.append(
+      "campos_extra",
+      JSON.stringify({
+        campos: valoresCamposExtra,
+        tablas: filasTablas,
+      }),
+    );
     formData.append("asunto", tempDesc);
     formData.append("descripcion", tempDescripcion);
     formData.append("observacion", tempObs);
@@ -660,7 +711,7 @@ export default function ActaEntregaScreen() {
         return `data:image/jpeg;base64,${base64}`;
       };
 
-      // Convertir imágenes a base64 (array de strings)
+      // Convertir imágenes a base64 
       const imagenesBase64 = [];
       if (imagenes.length > 0) {
         for (const img of imagenes) {
@@ -681,10 +732,12 @@ export default function ActaEntregaScreen() {
           fecha: fechaActual,
           correlativoFinal,
           items: items.map((item) => ({ ...item, asignado_a: asignadoA })),
+          valoresCamposExtra: valoresCamposExtra,
+          filasTablas: filasTablas,
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
-        imagenesBase64: imagenesBase64, 
+        imagenesBase64: imagenesBase64,
       });
 
       //WEB Y ELECTRON
@@ -1417,6 +1470,19 @@ export default function ActaEntregaScreen() {
               editable={!isReadOnly}
             />
           </View>
+
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
 
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (

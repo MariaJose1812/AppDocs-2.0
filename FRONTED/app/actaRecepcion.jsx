@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,7 +19,8 @@ import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { generarHTMLRecepcion } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
-
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
@@ -36,7 +36,6 @@ const P = {
     border2: "#444444",
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
-    textSub: "#E0E0E0",
     accent: "#60A5FA",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
@@ -58,7 +57,6 @@ const P = {
     border2: "#CBD5E1",
     text: "#0F172A",
     textMuted: "#64748B",
-    textSub: "#334155",
     accent: "#09528E",
     pickerBg: "#F1F5F9",
     pickerColor: "#0F172A",
@@ -81,7 +79,6 @@ const ThemedInput = ({
   multiline,
   editable,
   keyboardType,
-  autoCapitalize,
   style,
   colors,
 }) => (
@@ -106,7 +103,6 @@ const ThemedInput = ({
     multiline={multiline}
     editable={editable}
     keyboardType={keyboardType}
-    autoCapitalize={autoCapitalize}
   />
 );
 
@@ -143,87 +139,76 @@ const ThemedPicker = ({
   </View>
 );
 
-//Función para obtener la fecha de hoy
 const obtenerFechaActual = () => {
   const d = new Date();
-  const dia = String(d.getDate()).padStart(2, "0");
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const anio = d.getFullYear();
-  return `${dia}/${mes}/${anio}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 export default function ActaRecepcionScreen() {
   const router = useRouter();
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
-  const tipoActa = "RECEPCION";
   const { showAlert } = useAlert();
-
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  const [receptoresBD, setReceptoresBD] = useState([]);
+  //Plantilla dinámica
+  const { camposExtra, tablasExtra } = usePlantillaDinamica("RECEPCION");
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
 
-  // Emisor
+  //ESTADOS
+  const [receptoresBD, setReceptoresBD] = useState([]);
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState("");
   const [tituloActa, setTituloActa] = useState("ACTA DE RECEPCIÓN");
   const [editandoEmisor, setEditandoEmisor] = useState(false);
-
-  // Receptor/Proveedor
   const [receptorSelId, setReceptorSelId] = useState("");
   const [receptorSelNombre, setReceptorSelNombre] = useState("");
   const [receptorEmpresa, setReceptorEmpresa] = useState("");
-
-  // Descripción general
   const [descripcion, setDescripcion] = useState("");
-
-  // Temp item
   const [tempDescProd, setTempDescProd] = useState("");
   const [tempPrecio, setTempPrecio] = useState("");
   const [tempEquivalente, setTempEquivalente] = useState("");
   const [tempNumRecibo, setTempNumRecibo] = useState("");
   const [tempNumFact, setTempNumFact] = useState("");
   const [tempFecha, setTempFecha] = useState(obtenerFechaActual());
-
   const [items, setItems] = useState([]);
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
-
   const TASA_CAMBIO = 25.5;
 
-  // CARGAR EMISOR Y RECEPTOR
+  //CARGA INICIAL
   useEffect(() => {
-    const cargarTodo = async () => {
+    (async () => {
       try {
         const emisorRaw = await AsyncStorage.getItem("recepcion_emisor");
         if (emisorRaw) {
           const e = JSON.parse(emisorRaw);
           setEmisorNombre(e.nombre || "");
           setEmisorCargo(e.cargo || "Jefe de la Unidad de Infotecnologia");
-          const tituloLimpio = (e.titulo || "ACTA DE RECEPCIÓN")
-            .replace(/DE PRODUCTO DIGITAL\s*/i, "")
-            .trim();
-          setTituloActa(tituloLimpio || "ACTA DE RECEPCIÓN");
+          setTituloActa(
+            (e.titulo || "ACTA DE RECEPCIÓN")
+              .replace(/DE PRODUCTO DIGITAL\s*/i, "")
+              .trim() || "ACTA DE RECEPCIÓN",
+          );
         }
         const resRec = await api.get("/receptores");
         setReceptoresBD(resRec.data);
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarTodo();
+    })();
   }, []);
 
-  // Cargar acta en modo vista
+  //CARGA MODO VISTA
   useEffect(() => {
-    const cargarActa = async () => {
-      if (!id) return;
+    if (!id) return;
+    (async () => {
       try {
         const res = await api.get(`/actas/detalle/RECEPCION/${id}`);
         const acta = Array.isArray(res.data) ? res.data[0] : res.data;
         if (!acta) return;
-
         const firmante = acta.firmante || {};
         setEmisorNombre(firmante.nombre || acta.emisor?.nombre || "");
         setEmisorCargo(
@@ -232,52 +217,83 @@ export default function ActaRecepcionScreen() {
             "Jefe de la Unidad de Infotecnologia",
         );
         setTituloActa("ACTA DE RECEPCIÓN");
-
-        const receptor = acta.receptor || {};
-        setReceptorSelNombre(receptor.nombre || "");
-        setReceptorEmpresa(receptor.empresa || receptor.cargo || "");
-
+        setReceptorSelNombre(acta.receptor?.nombre || "");
+        setReceptorEmpresa(
+          acta.receptor?.empresa || acta.receptor?.cargo || "",
+        );
         setDescripcion(acta.descripcion || "");
         setCorrelativo(acta.correlativo || "");
-
-        if (acta.items?.length > 0) {
+        if (acta.items?.length > 0)
           setItems(
             acta.items.map((item, idx) => ({
               ...item,
               _idTemporal: idx.toString(),
             })),
           );
+        //CAMPOS EXTRA
+        if (acta.campos_extra) {
+          const parsed =
+            typeof acta.campos_extra === "string"
+              ? JSON.parse(acta.campos_extra)
+              : acta.campos_extra;
+          setValoresCamposExtra(parsed.campos || {});
+          setFilasTablas(parsed.tablas || {});
         }
-      } catch (err) {
-        console.error("Error trayendo acta:", err);
-        showAlert({
-          title: "Error",
-          message: "No se pudo cargar el detalle del acta",
-        });
+      } catch (e) {
+        console.error(e);
+        showAlert({ title: "Error", message: "No se pudo cargar el acta." });
       }
-    };
-    cargarActa();
+    })();
   }, [id]);
 
-  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    const alertButtons =
-      botones.length > 0
-        ? botones.map((btn) => ({
-            text: btn.text,
-            style:
-              btn.style === "cancel"
-                ? "cancel"
-                : btn.style === "destructive"
-                  ? "danger"
-                  : "primary",
-            onPress: btn.onPress,
-          }))
-        : [{ text: "Aceptar" }];
+  //CAMPOS DINÁMICOS
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const nuevas = [...(prev[tablaId] || [])];
+        nuevas[index] = { ...nuevas[index], [colId]: valor };
+        return { ...prev, [tablaId]: nuevas };
+      }),
+    [],
+  );
 
+  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
     showAlert({
       title: titulo,
       message: mensaje,
-      buttons: alertButtons,
+      buttons:
+        botones.length > 0
+          ? botones.map((b) => ({
+              text: b.text,
+              style:
+                b.style === "cancel"
+                  ? "cancel"
+                  : b.style === "danger"
+                    ? "danger"
+                    : "primary",
+              onPress: b.onPress,
+            }))
+          : [{ text: "Aceptar" }],
     });
   };
 
@@ -297,21 +313,17 @@ export default function ActaRecepcionScreen() {
     }
   };
 
-  // AGREGAR ITEM
   const agregarItem = () => {
     if (!tempDescProd.trim()) {
-      mostrarAlerta("Atención", "La descripción del producto es obligatoria.");
+      mostrarAlerta("Atención", "La descripción es obligatoria.");
       return;
     }
     if (!tempNumRecibo.trim() || !tempNumFact.trim()) {
-      mostrarAlerta(
-        "Atención",
-        "El # de recibo y # de factura son obligatorios.",
-      );
+      mostrarAlerta("Atención", "# Recibo y # Factura son obligatorios.");
       return;
     }
-    setItems([
-      ...items,
+    setItems((prev) => [
+      ...prev,
       {
         descr_prod: tempDescProd,
         precio_prod: tempPrecio,
@@ -331,13 +343,10 @@ export default function ActaRecepcionScreen() {
     setTempFecha(obtenerFechaActual());
   };
 
-  const eliminarItem = (idTemp) =>
-    setItems(items.filter((i) => i._idTemporal !== idTemp));
-
-  const cancelarActa = () => {
+  const cancelarActa = () =>
     mostrarAlerta(
       "¿Estás seguro?",
-      "Si cancelas, perderás todos los datos ingresados.",
+      "Si cancelas, perderás los datos ingresados.",
       [
         { text: "No, continuar", style: "cancel" },
         {
@@ -347,9 +356,8 @@ export default function ActaRecepcionScreen() {
         },
       ],
     );
-  };
 
-  // GUARDAR ACTA
+  //GUARDAR
   const generarActa = async () => {
     if (!emisorNombre.trim()) {
       mostrarAlerta("Error", "Ingresa el nombre del firmante.");
@@ -376,9 +384,13 @@ export default function ActaRecepcionScreen() {
     const payload = {
       idReceptores: parseInt(receptorSelId) || null,
       idEmpleados: null,
-      descripcion: descripcion,
+      descripcion,
       firmante_nombre: emisorNombre,
       firmante_cargo: emisorCargo,
+      campos_extra: JSON.stringify({
+        campos: valoresCamposExtra,
+        tablas: filasTablas,
+      }),
       items: items.map((item) => ({
         descr_prod: item.descr_prod,
         precio_prod: parseFloat(item.precio_prod) || 0,
@@ -402,7 +414,7 @@ export default function ActaRecepcionScreen() {
     }
   };
 
-  // GENERAR PDF
+  //GENERAR PDF
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
@@ -417,30 +429,28 @@ export default function ActaRecepcionScreen() {
       mostrarAlerta("Atención", "No hay productos para mostrar.");
       return;
     }
-
     setIsPrinting(true);
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
       const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
         await Promise.all([getLogoURIs(), obtenerPlantillaActiva("RECEPCION")]);
 
-      const proveedorNombre = receptorEmpresa || receptorSelNombre || "—";
-
       const htmlContent = generarHTMLRecepcion({
         data: {
           emisorNombre,
           emisorCargo,
-          proveedorNombre,
+          proveedorNombre: receptorEmpresa || receptorSelNombre || "—",
           descripcion,
           items,
           tituloActa,
           correlativoFinal,
+          valoresCamposExtra,
+          filasTablas,
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
       });
 
-      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
         if (typeof window.html2pdf === "undefined") {
           await new Promise((resolve, reject) => {
@@ -452,46 +462,36 @@ export default function ActaRecepcionScreen() {
             document.head.appendChild(script);
           });
         }
-
-        const opt = {
-          margin: [0, 0, 0, 0],
-          filename: `Acta_Recepcion_${correlativoFinal || "temp"}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            letterRendering: true,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        };
-
-        try {
-          await window.html2pdf().set(opt).from(htmlContent, "string").save();
-        } catch (err) {
-          console.error("html2pdf error:", err);
-          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
-        }
+        await window
+          .html2pdf()
+          .set({
+            margin: [0, 0, 0, 0],
+            filename: `Acta_Recepcion_${correlativoFinal || "temp"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+            },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(htmlContent, "string")
+          .save();
       } else {
-        // Móvil
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,
         });
-        const puedCompartir = await Sharing.isAvailableAsync();
-        if (puedCompartir) {
+        if (await Sharing.isAvailableAsync())
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Acta",
+            dialogTitle: "Guardar Acta",
             UTI: "com.adobe.pdf",
           });
-        } else {
-          mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-        }
+        else mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
       }
     } catch (err) {
-      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);
@@ -556,26 +556,7 @@ export default function ActaRecepcionScreen() {
           color: c.textMuted,
           marginBottom: 6,
         },
-        input: {
-          backgroundColor: c.inputBg,
-          borderWidth: 1,
-          borderColor: c.inputBorder,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          fontSize: 15,
-          color: c.text,
-        },
         readOnlyInput: { backgroundColor: c.surface2, color: c.textMuted },
-        pickerWrapper: {
-          backgroundColor: c.pickerBg,
-          borderWidth: 1,
-          borderColor: c.border2,
-          borderRadius: 10,
-          justifyContent: "center",
-          height: 44,
-          marginBottom: 8,
-        },
         row: {
           flexDirection: "row",
           justifyContent: "space-between",
@@ -596,7 +577,6 @@ export default function ActaRecepcionScreen() {
           fontSize: 14,
         },
         itemMeta: { fontSize: 12, color: c.textMuted },
-        itemFecha: { fontSize: 11, color: c.textMuted, marginTop: 2 },
         buttonsContainer: {
           flexDirection: "row",
           justifyContent: "space-between",
@@ -634,14 +614,13 @@ export default function ActaRecepcionScreen() {
       <CustomScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
+        nestedScrollEnabled
       >
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE ACTA" : "NUEVA ACTA DE RECEPCIÓN"}
         </Text>
-
         <View style={styles.formContainer}>
-          {/* CARD: Firmante */}
+          {/* FIRMANTE */}
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.sectionTitle}>Firmante del acta</Text>
@@ -668,14 +647,13 @@ export default function ActaRecepcionScreen() {
                 </TouchableOpacity>
               )}
             </View>
-
             {editandoEmisor ? (
               <>
                 <Text style={styles.label}>Nombre:</Text>
                 <ThemedInput
                   value={emisorNombre}
                   onChangeText={setEmisorNombre}
-                  placeholder="Nombre completo del firmante..."
+                  placeholder="Nombre completo..."
                   colors={c}
                   style={{ marginBottom: 12 }}
                 />
@@ -683,7 +661,7 @@ export default function ActaRecepcionScreen() {
                 <ThemedInput
                   value={emisorCargo}
                   onChangeText={setEmisorCargo}
-                  placeholder="Cargo del firmante..."
+                  placeholder="Cargo..."
                   colors={c}
                   style={{ marginBottom: 12 }}
                 />
@@ -698,55 +676,47 @@ export default function ActaRecepcionScreen() {
                   Estos datos se guardan como valores por defecto.
                 </Text>
               </>
+            ) : emisorNombre ? (
+              <>
+                <Text style={styles.emisorNombre}>{emisorNombre}</Text>
+                <Text style={styles.emisorCargo}>{emisorCargo}</Text>
+                <Text
+                  style={[
+                    styles.emisorCargo,
+                    { marginTop: 6, color: c.accent },
+                  ]}
+                >
+                  Título: {tituloActa}
+                </Text>
+              </>
             ) : (
-              <View>
-                {emisorNombre ? (
-                  <>
-                    <Text style={styles.emisorNombre}>{emisorNombre}</Text>
-                    <Text style={styles.emisorCargo}>{emisorCargo}</Text>
-                    <Text
-                      style={[
-                        styles.emisorCargo,
-                        { marginTop: 6, color: c.accent },
-                      ]}
-                    >
-                      Título: {tituloActa}
-                    </Text>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.sinEmisorBtn}
-                    onPress={() => setEditandoEmisor(true)}
-                  >
-                    <MaterialCommunityIcons
-                      name="account-edit-outline"
-                      size={20}
-                      color={c.accent}
-                    />
-                    <Text style={styles.sinEmisorText}>
-                      Configura el firmante — presiona "Cambiar"
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.sinEmisorBtn}
+                onPress={() => setEditandoEmisor(true)}
+              >
+                <MaterialCommunityIcons
+                  name="account-edit-outline"
+                  size={20}
+                  color={c.accent}
+                />
+                <Text style={styles.sinEmisorText}>
+                  Configura el firmante — presiona "Cambiar"
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* CARD: Proveedor */}
+          {/*PROVEEDOR*/}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Proveedor / Empresa</Text>
             <View style={{ height: 12 }} />
-
             {isReadOnly ? (
-              <>
-                <Text style={styles.label}>Empresa:</Text>
-                <ThemedInput
-                  value={receptorEmpresa || receptorSelNombre}
-                  editable={false}
-                  style={styles.readOnlyInput}
-                  colors={c}
-                />
-              </>
+              <ThemedInput
+                value={receptorEmpresa || receptorSelNombre}
+                editable={false}
+                style={styles.readOnlyInput}
+                colors={c}
+              />
             ) : (
               <>
                 <Text style={styles.label}>Seleccionar receptor:</Text>
@@ -771,7 +741,7 @@ export default function ActaRecepcionScreen() {
                     .filter((r) => r.estRec === "Activo")
                     .map((rec) => (
                       <Picker.Item
-                        key={`rec-${rec.idReceptores}`}
+                        key={rec.idReceptores}
                         label={`${rec.nomRec} — ${rec.emprRec}`}
                         value={String(rec.idReceptores)}
                         color={c.pickerColor}
@@ -788,7 +758,7 @@ export default function ActaRecepcionScreen() {
             )}
           </View>
 
-          {/* CARD: Descripción */}
+          {/* DESCRIPCIÓN*/}
           <View style={styles.card}>
             <Text style={styles.label}>Descripción de lo recibido:</Text>
             <ThemedInput
@@ -801,12 +771,11 @@ export default function ActaRecepcionScreen() {
             />
           </View>
 
-          {/* CARD: Agregar Producto */}
+          {/* AGREGAR PRODUCTO*/}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>AGREGAR PRODUCTO</Text>
               <View style={{ height: 12 }} />
-
               <Text style={styles.label}>Descripción del producto:</Text>
               <ThemedInput
                 style={{
@@ -819,25 +788,21 @@ export default function ActaRecepcionScreen() {
                 onChangeText={setTempDescProd}
                 colors={c}
               />
-
-              {/* Precio + Equivalente en lempiras */}
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>Precio ($):</Text>
                   <ThemedInput
                     value={tempPrecio}
-                    onChangeText={(val) => {
-                      setTempPrecio(val);
-                      const num = parseFloat(val);
-                      if (!isNaN(num) && num > 0) {
-                        setTempEquivalente((num * TASA_CAMBIO).toFixed(2));
-                      } else {
-                        setTempEquivalente("");
-                      }
-                    }}
                     keyboardType="decimal-pad"
                     placeholder="0.00"
                     colors={c}
+                    onChangeText={(val) => {
+                      setTempPrecio(val);
+                      const n = parseFloat(val);
+                      setTempEquivalente(
+                        !isNaN(n) && n > 0 ? (n * TASA_CAMBIO).toFixed(2) : "",
+                      );
+                    }}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -851,8 +816,6 @@ export default function ActaRecepcionScreen() {
                   />
                 </View>
               </View>
-
-              {/* Fecha */}
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.label}>Fecha:</Text>
@@ -865,8 +828,6 @@ export default function ActaRecepcionScreen() {
                 </View>
                 <View style={{ flex: 1 }} />
               </View>
-
-              {/* Recibo + Factura */}
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={[styles.label, { color: c.danger }]}>
@@ -889,7 +850,6 @@ export default function ActaRecepcionScreen() {
                   />
                 </View>
               </View>
-
               <TouchableOpacity
                 style={[
                   styles.saveBtn,
@@ -902,7 +862,7 @@ export default function ActaRecepcionScreen() {
             </View>
           )}
 
-          {/* CARD: Lista de productos */}
+          {/*LISTA PRODUCTOS */}
           {items.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.label}>Productos ({items.length}):</Text>
@@ -922,13 +882,16 @@ export default function ActaRecepcionScreen() {
                       Recibo: {item.num_recibo || "—"} · Factura:{" "}
                       {item.num_fact || "—"}
                     </Text>
-                    <Text style={styles.itemFecha}>
-                      Fecha: {item.fech_ARCDet || item.fech_ARCEnc || "—"}
-                    </Text>
                   </View>
                   {!isReadOnly && (
                     <TouchableOpacity
-                      onPress={() => eliminarItem(item._idTemporal)}
+                      onPress={() =>
+                        setItems(
+                          items.filter(
+                            (i) => i._idTemporal !== item._idTemporal,
+                          ),
+                        )
+                      }
                     >
                       <MaterialCommunityIcons
                         name="delete"
@@ -942,7 +905,20 @@ export default function ActaRecepcionScreen() {
             </View>
           )}
 
-          {/* BOTONES */}
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
+
+          {/*BOTONES*/}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity style={styles.saveBtn} onPress={generarActa}>

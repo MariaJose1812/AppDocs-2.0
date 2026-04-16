@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,7 +19,8 @@ import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { generarHTMLMemorandum } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
-
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
@@ -36,7 +36,6 @@ const P = {
     border2: "#444444",
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
-    textSub: "#E0E0E0",
     accent: "#60A5FA",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
@@ -57,7 +56,6 @@ const P = {
     border2: "#CBD5E1",
     text: "#0F172A",
     textMuted: "#64748B",
-    textSub: "#334155",
     accent: "#09528E",
     pickerBg: "#F1F5F9",
     pickerColor: "#0F172A",
@@ -72,14 +70,12 @@ const P = {
   },
 };
 
-const ThemedInput = ({
+const TI = ({
   value,
   onChangeText,
   placeholder,
   multiline,
   editable,
-  keyboardType,
-  autoCapitalize,
   style,
   colors,
 }) => (
@@ -103,18 +99,9 @@ const ThemedInput = ({
     placeholderTextColor={colors.textMuted}
     multiline={multiline}
     editable={editable}
-    keyboardType={keyboardType}
-    autoCapitalize={autoCapitalize}
   />
 );
-
-const ThemedPicker = ({
-  selectedValue,
-  onValueChange,
-  enabled,
-  children,
-  colors,
-}) => (
+const TP = ({ selectedValue, onValueChange, enabled, children, colors }) => (
   <View
     style={{
       backgroundColor: colors.pickerBg,
@@ -146,8 +133,6 @@ const EMISOR_DEFAULT = {
   nombre: "Ing. Marco Aguilera",
   cargo: "Jefe de Infotecnología",
 };
-
-// RECEPTOR
 const TIPO_RECEPTOR = { EMPLEADO: "empleado", RECEPTOR: "receptor" };
 
 export default function MemorandumScreen() {
@@ -155,166 +140,176 @@ export default function MemorandumScreen() {
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
   const { showAlert } = useAlert();
-
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  //EMISOR
+  const { camposExtra, tablasExtra } = usePlantillaDinamica("MEMORANDUM");
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
+
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [editandoEmisor, setEditandoEmisor] = useState(false);
-
-  //ESTADO PARA
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
-
   const [receptorSelId, setReceptorSelId] = useState("");
   const [receptorSelNombre, setReceptorSelNombre] = useState("");
   const [receptorCargo, setReceptorCargo] = useState("");
-
   const [empleadoSelId, setEmpleadoSelId] = useState("");
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
-
-  //ASUNTO Y PARRAFOS
   const [asunto, setAsunto] = useState("");
   const [tempItem, setTempItem] = useState("");
   const [items, setItems] = useState([]);
-
-  //METADATA
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
-
-  //FECHA
   const fechaHoy = new Date().toLocaleDateString("es-HN", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
 
-  //CARGAR EMISOR
   useEffect(() => {
-    const cargarTodo = async () => {
+    (async () => {
       try {
-        const emisorRaw = await AsyncStorage.getItem(EMISOR_KEY);
-        if (emisorRaw) {
-          const e = JSON.parse(emisorRaw);
+        const raw = await AsyncStorage.getItem(EMISOR_KEY);
+        if (raw) {
+          const e = JSON.parse(raw);
           setEmisorNombre(e.nombre || "");
           setEmisorCargo(e.cargo || EMISOR_DEFAULT.cargo);
         } else {
           setEmisorNombre(EMISOR_DEFAULT.nombre);
           setEmisorCargo(EMISOR_DEFAULT.cargo);
         }
-
         const [resRec, resEmp] = await Promise.all([
           api.get("/receptores"),
           api.get("/empleados"),
         ]);
         setReceptoresBD(resRec.data);
         setEmpleadosBD(resEmp.data);
-      } catch (err) {
-        console.error("Error cargando datos:", err);
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarTodo();
+    })();
   }, []);
 
-  //CARGAR MEMO
   useEffect(() => {
-    const cargarMemo = async () => {
-      if (!id) return;
+    if (!id) return;
+    (async () => {
       try {
         const res = await api.get(`/actas/memorandum/${id}`);
         const memo = Array.isArray(res.data) ? res.data[0] : res.data;
         if (!memo) return;
-
-        const emisorRaw = await AsyncStorage.getItem(EMISOR_KEY);
-        if (emisorRaw) {
-          const e = JSON.parse(emisorRaw);
+        const raw = await AsyncStorage.getItem(EMISOR_KEY);
+        if (raw) {
+          const e = JSON.parse(raw);
           setEmisorNombre(e.nombre || EMISOR_DEFAULT.nombre);
           setEmisorCargo(e.cargo || EMISOR_DEFAULT.cargo);
         }
-
         setAsunto(memo.asunto || "");
         setCorrelativo(memo.correlativo || "");
         setReceptorSelNombre(memo.receptor?.nombre || "");
         setReceptorCargo(memo.receptor?.cargo || "");
-        if (memo.items?.length > 0) {
+        if (memo.items?.length > 0)
           setItems(
             memo.items.map((item, idx) => ({
               desc_MMDet: item.desc_MMDet,
               _idTemporal: idx.toString(),
             })),
           );
+        //CAMPOS EXTRA
+        if (memo.campos_extra) {
+          const parsed =
+            typeof memo.campos_extra === "string"
+              ? JSON.parse(memo.campos_extra)
+              : memo.campos_extra;
+          setValoresCamposExtra(parsed.campos || {});
+          setFilasTablas(parsed.tablas || {});
         }
-      } catch (err) {
-        console.error("Error trayendo memorándum:", err);
-        mostrarAlerta("Error", "No se pudo cargar el detalle del memorándum.");
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarMemo();
+    })();
   }, [id]);
 
-  //ALERTAS
-  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    const alertButtons =
-      botones.length > 0
-        ? botones.map((btn) => ({
-            text: btn.text,
-            style:
-              btn.style === "cancel"
-                ? "cancel"
-                : btn.style === "destructive"
-                  ? "danger"
-                  : "primary",
-            onPress: btn.onPress,
-          }))
-        : [{ text: "Aceptar" }];
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const n = [...(prev[tablaId] || [])];
+        n[index] = { ...n[index], [colId]: valor };
+        return { ...prev, [tablaId]: n };
+      }),
+    [],
+  );
 
+  const mostrarAlerta = (titulo, mensaje = "", botones = []) =>
     showAlert({
       title: titulo,
       message: mensaje,
-      buttons: alertButtons,
+      buttons:
+        botones.length > 0
+          ? botones.map((b) => ({
+              text: b.text,
+              style:
+                b.style === "cancel"
+                  ? "cancel"
+                  : b.style === "danger"
+                    ? "danger"
+                    : "primary",
+              onPress: b.onPress,
+            }))
+          : [{ text: "Aceptar" }],
     });
-  };
 
   const guardarEmisor = async () => {
     if (!emisorNombre.trim()) {
-      mostrarAlerta("Atención", "El nombre del firmante no puede estar vacío.");
+      mostrarAlerta("Atención", "El nombre no puede estar vacío.");
       return;
     }
-    try {
-      await AsyncStorage.setItem(
-        EMISOR_KEY,
-        JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
-      );
-      setEditandoEmisor(false);
-    } catch {
-      mostrarAlerta("Error", "No se pudieron guardar los datos del firmante.");
-    }
+    await AsyncStorage.setItem(
+      EMISOR_KEY,
+      JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
+    );
+    setEditandoEmisor(false);
   };
 
-  //AGREGGAR PARRAFO
   const agregarItem = () => {
     if (!tempItem.trim()) {
       mostrarAlerta("Atención", "El párrafo no puede estar vacío.");
       return;
     }
-    setItems([
-      ...items,
+    setItems((prev) => [
+      ...prev,
       { desc_MMDet: tempItem.trim(), _idTemporal: Date.now().toString() },
     ]);
     setTempItem("");
   };
 
-  const eliminarItem = (idTemp) =>
-    setItems(items.filter((i) => i._idTemporal !== idTemp));
-
-  const cancelar = () => {
+  const cancelar = () =>
     mostrarAlerta(
       "¿Estás seguro?",
-      "Si cancelas, perderás todos los datos ingresados.",
+      "Si cancelas, perderás los datos ingresados.",
       [
         { text: "No, continuar", style: "cancel" },
         {
@@ -324,27 +319,25 @@ export default function MemorandumScreen() {
         },
       ],
     );
-  };
 
-  const getNombreParaPDF = () => {
-    if (isReadOnly) return receptorSelNombre;
-    return tipoReceptor === TIPO_RECEPTOR.EMPLEADO
-      ? empleadoSelNombre
-      : receptorSelNombre;
-  };
-  const getCargoParaPDF = () => {
-    if (isReadOnly) return receptorCargo;
-    return tipoReceptor === TIPO_RECEPTOR.EMPLEADO
-      ? empleadoCargo
-      : receptorCargo;
-  };
+  const getNombreParaPDF = () =>
+    isReadOnly
+      ? receptorSelNombre
+      : tipoReceptor === TIPO_RECEPTOR.EMPLEADO
+        ? empleadoSelNombre
+        : receptorSelNombre;
+  const getCargoParaPDF = () =>
+    isReadOnly
+      ? receptorCargo
+      : tipoReceptor === TIPO_RECEPTOR.EMPLEADO
+        ? empleadoCargo
+        : receptorCargo;
 
   const guardarMemorandum = async () => {
     if (!emisorNombre.trim()) {
-      mostrarAlerta("Error", "Ingresa el nombre del firmante (DE).");
+      mostrarAlerta("Error", "Ingresa el nombre del firmante.");
       return;
     }
-
     const idEmp =
       tipoReceptor === TIPO_RECEPTOR.EMPLEADO
         ? parseInt(empleadoSelId) || null
@@ -353,7 +346,6 @@ export default function MemorandumScreen() {
       tipoReceptor === TIPO_RECEPTOR.RECEPTOR
         ? parseInt(receptorSelId) || null
         : null;
-
     if (!idEmp && !idRec) {
       mostrarAlerta("Error", "Selecciona un destinatario.");
       return;
@@ -363,126 +355,120 @@ export default function MemorandumScreen() {
       return;
     }
     if (items.length === 0) {
-      mostrarAlerta(
-        "Error",
-        "Agrega al menos un párrafo al cuerpo del memorándum.",
-      );
+      mostrarAlerta("Error", "Agrega al menos un párrafo.");
       return;
     }
-
     await AsyncStorage.setItem(
       EMISOR_KEY,
       JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
     );
-
     const payload = {
       idEmpleados: idEmp,
       idReceptores: idRec,
       asunto_MMEnc: asunto,
+      campos_extra: JSON.stringify({
+        campos: valoresCamposExtra,
+        tablas: filasTablas,
+      }),
       items: items.map((i) => ({ desc_MMDet: i.desc_MMDet })),
     };
-
     try {
       const response = await api.post("/actas/memorandum", payload);
-      const correlativoNuevo = response.data.correlativo || "";
-      setCorrelativo(correlativoNuevo);
-      await generarPDF(correlativoNuevo);
+      setCorrelativo(response.data.correlativo || "");
+      await generarPDF(response.data.correlativo || "");
       router.replace("/dashboard");
     } catch (error) {
       mostrarAlerta(
         "Error al guardar",
-        error.response?.data?.error || "Ocurrió un error inesperado.",
+        error.response?.data?.error || "Error inesperado.",
       );
     }
   };
 
-  //Generar PDF
   const generarPDF = async (correlativoParam = "") => {
-  if (isPrinting) return;
-  if (!correlativoParam && !correlativo && !isReadOnly) {
-    mostrarAlerta("Atención", "Guarda el memorándum primero para generar el PDF.");
-    return;
-  }
-  if (!emisorNombre.trim()) {
-    mostrarAlerta("Atención", "Falta el nombre del firmante.");
-    return;
-  }
-  if (items.length === 0) {
-    mostrarAlerta("Atención", "No hay contenido para mostrar.");
-    return;
-  }
-
-  setIsPrinting(true);
-  try {
-    const correlativoFinal = correlativoParam || correlativo || "";
-    const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
-      await Promise.all([getLogoURIs(), obtenerPlantillaActiva("MEMORANDUM")]);
-
-    const nombrePara = getNombreParaPDF();
-    const cargoPara = getCargoParaPDF();
-
-    const htmlContent = generarHTMLMemorandum({
-      data: {
-        emisorNombre,
-        emisorCargo,
-        receptorNombre: nombrePara,
-        receptorCargo: cargoPara,
-        asunto,
-        fecha: fechaHoy,
-        correlativoFinal,
-        items,
-      },
-      config: cPlantilla,
-      logos: { uriConadeh, uriInfo },
-    });
-
-    // ---------- WEB / ELECTRON con html2pdf ----------
-    if (Platform.OS === "web") {
-      if (typeof window.html2pdf === "undefined") {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src =
-            "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      const opt = {
-        margin: [0, 0, 0, 0],
-        filename: `Memorandum_${correlativoFinal || "temp"}.pdf`,
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, letterRendering: true, useCORS: true, allowTaint: true, logging: false },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-      };
-
-      try {
-        await window.html2pdf().set(opt).from(htmlContent, "string").save();
-      } catch (err) {
-        console.error("html2pdf error:", err);
-        mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
-      }
-    } else {
-      const { uri } = await Print.printToFileAsync({ html: htmlContent, base64: false });
-      const puedCompartir = await Sharing.isAvailableAsync();
-      if (puedCompartir) {
-        await Sharing.shareAsync(uri, {
-          mimeType: "application/pdf",
-          dialogTitle: "Guardar o compartir Acta",
-          UTI: "com.adobe.pdf",
-        });
-      } else {
-        mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-      }
+    if (isPrinting) return;
+    if (!correlativoParam && !correlativo && !isReadOnly) {
+      mostrarAlerta("Atención", "Guarda el memorándum primero.");
+      return;
     }
-  } catch (err) {
-    console.error("Error al generar PDF:", err.message);
-    mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
-  } finally {
-    setIsPrinting(false);
-  }
-};
+    if (!emisorNombre.trim()) {
+      mostrarAlerta("Atención", "Falta el nombre del firmante.");
+      return;
+    }
+    if (items.length === 0) {
+      mostrarAlerta("Atención", "No hay contenido para mostrar.");
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const correlativoFinal = correlativoParam || correlativo || "";
+      const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
+        await Promise.all([
+          getLogoURIs(),
+          obtenerPlantillaActiva("MEMORANDUM"),
+        ]);
+      const htmlContent = generarHTMLMemorandum({
+        data: {
+          emisorNombre,
+          emisorCargo,
+          receptorNombre: getNombreParaPDF(),
+          receptorCargo: getCargoParaPDF(),
+          asunto,
+          fecha: fechaHoy,
+          correlativoFinal,
+          items,
+          valoresCamposExtra,
+          filasTablas,
+        },
+        config: cPlantilla,
+        logos: { uriConadeh, uriInfo },
+      });
+      if (Platform.OS === "web") {
+        if (typeof window.html2pdf === "undefined") {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src =
+              "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+          });
+        }
+        await window
+          .html2pdf()
+          .set({
+            margin: [0, 0, 0, 0],
+            filename: `Memorandum_${correlativoFinal || "temp"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+            },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(htmlContent, "string")
+          .save();
+      } else {
+        const { uri } = await Print.printToFileAsync({
+          html: htmlContent,
+          base64: false,
+        });
+        if (await Sharing.isAvailableAsync())
+          await Sharing.shareAsync(uri, {
+            mimeType: "application/pdf",
+            dialogTitle: "Guardar Memorándum",
+            UTI: "com.adobe.pdf",
+          });
+        else mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
+      }
+    } catch (err) {
+      mostrarAlerta("Error", "No se pudo generar: " + err.message);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   const styles = useMemo(
     () =>
@@ -535,7 +521,6 @@ export default function MemorandumScreen() {
           borderColor: c.border,
         },
         sinEmisorText: { fontSize: 13, color: c.accent, fontWeight: "600" },
-        // ---------- ESTILOS DEL TOGGLE (IGUAL A actaRetiro) ----------
         toggleContainer: {
           flexDirection: "row",
           backgroundColor: c.toggleBg,
@@ -549,23 +534,13 @@ export default function MemorandumScreen() {
           borderRadius: 6,
           alignItems: "center",
         },
-        toggleBtnActive: {
-          backgroundColor: c.primary,
-          elevation: 2,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.15,
-          shadowRadius: 3,
-        },
+        toggleBtnActive: { backgroundColor: c.primary, elevation: 2 },
         toggleBtnText: {
           fontSize: 14,
           fontWeight: "600",
           color: c.toggleInactive,
         },
-        toggleBtnTextActive: {
-          color: "#fff",
-        },
-        // ---------------------------------------------
+        toggleBtnTextActive: { color: "#fff" },
         receptorInfo: { fontSize: 13, color: c.textMuted, marginTop: 6 },
         label: {
           fontSize: 14,
@@ -573,26 +548,7 @@ export default function MemorandumScreen() {
           color: c.textMuted,
           marginBottom: 6,
         },
-        input: {
-          backgroundColor: c.inputBg,
-          borderWidth: 1,
-          borderColor: c.inputBorder,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          fontSize: 15,
-          color: c.text,
-        },
         readOnlyInput: { backgroundColor: c.surface2, color: c.textMuted },
-        pickerWrapper: {
-          backgroundColor: c.pickerBg,
-          borderWidth: 1,
-          borderColor: c.border2,
-          borderRadius: 10,
-          justifyContent: "center",
-          height: 44,
-          marginBottom: 4,
-        },
         itemRow: {
           flexDirection: "row",
           alignItems: "flex-start",
@@ -611,12 +567,7 @@ export default function MemorandumScreen() {
           marginTop: 1,
         },
         itemNum: { color: "#fff", fontSize: 11, fontWeight: "700" },
-        itemDesc: {
-          flex: 1,
-          fontSize: 14,
-          color: c.text,
-          lineHeight: 20,
-        },
+        itemDesc: { flex: 1, fontSize: 14, color: c.text, lineHeight: 20 },
         buttonsContainer: {
           flexDirection: "row",
           justifyContent: "space-between",
@@ -654,14 +605,13 @@ export default function MemorandumScreen() {
       <CustomScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled={true}
+        nestedScrollEnabled
       >
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE MEMORÁNDUM" : "NUEVO MEMORÁNDUM"}
         </Text>
-
         <View style={styles.formContainer}>
-          {/* CARD: DE (emisor / firmante) */}
+          {/* Firmante */}
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.sectionTitle}>DE: Firmante</Text>
@@ -688,140 +638,106 @@ export default function MemorandumScreen() {
                 </TouchableOpacity>
               )}
             </View>
-
             {editandoEmisor ? (
               <>
                 <Text style={styles.label}>Nombre:</Text>
-                <ThemedInput
+                <TI
                   value={emisorNombre}
                   onChangeText={setEmisorNombre}
-                  placeholder="Nombre completo del firmante..."
+                  placeholder="Nombre completo..."
                   colors={c}
                   style={{ marginBottom: 12 }}
                 />
                 <Text style={styles.label}>Cargo:</Text>
-                <ThemedInput
+                <TI
                   value={emisorCargo}
                   onChangeText={setEmisorCargo}
-                  placeholder="Cargo del firmante..."
+                  placeholder="Cargo..."
                   colors={c}
                 />
                 <Text style={styles.hintText}>
                   Estos datos se guardan como valores por defecto.
                 </Text>
               </>
+            ) : emisorNombre ? (
+              <>
+                <Text style={styles.emisorNombre}>{emisorNombre}</Text>
+                <Text style={styles.emisorCargo}>{emisorCargo}</Text>
+              </>
             ) : (
-              <View>
-                {emisorNombre ? (
-                  <>
-                    <Text style={styles.emisorNombre}>{emisorNombre}</Text>
-                    <Text style={styles.emisorCargo}>{emisorCargo}</Text>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.sinEmisorBtn}
-                    onPress={() => setEditandoEmisor(true)}
-                  >
-                    <MaterialCommunityIcons
-                      name="account-edit-outline"
-                      size={20}
-                      color={c.accent}
-                    />
-                    <Text style={styles.sinEmisorText}>
-                      Configura el firmante — presiona "Cambiar"
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.sinEmisorBtn}
+                onPress={() => setEditandoEmisor(true)}
+              >
+                <MaterialCommunityIcons
+                  name="account-edit-outline"
+                  size={20}
+                  color={c.accent}
+                />
+                <Text style={styles.sinEmisorText}>
+                  Configura el firmante — presiona "Cambiar"
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* CARD: PARA (destinatario) */}
+          {/* Destinatario */}
           <View style={styles.card}>
             <View style={{ height: 12 }} />
-
             {isReadOnly ? (
-              <>
-                <Text style={styles.label}>Destinatario:</Text>
-                <ThemedInput
-                  value={`${receptorSelNombre}${receptorCargo ? ` — ${receptorCargo}` : ""}`}
-                  editable={false}
-                  style={styles.readOnlyInput}
-                  colors={c}
-                />
-              </>
+              <TI
+                value={`${receptorSelNombre}${receptorCargo ? ` — ${receptorCargo}` : ""}`}
+                editable={false}
+                style={styles.readOnlyInput}
+                colors={c}
+              />
             ) : (
               <>
-                {/* TOGGLE IGUAL A actaRetiro */}
                 <View style={styles.toggleContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.EMPLEADO);
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorCargo("");
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Empleado
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.RECEPTOR);
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorCargo("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Receptor externo
-                    </Text>
-                  </TouchableOpacity>
+                  {[TIPO_RECEPTOR.EMPLEADO, TIPO_RECEPTOR.RECEPTOR].map(
+                    (tipo) => (
+                      <TouchableOpacity
+                        key={tipo}
+                        style={[
+                          styles.toggleBtn,
+                          tipoReceptor === tipo && styles.toggleBtnActive,
+                        ]}
+                        onPress={() => {
+                          setTipoReceptor(tipo);
+                          setReceptorSelId("");
+                          setReceptorSelNombre("");
+                          setReceptorCargo("");
+                          setEmpleadoSelId("");
+                          setEmpleadoSelNombre("");
+                          setEmpleadoCargo("");
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.toggleBtnText,
+                            tipoReceptor === tipo && styles.toggleBtnTextActive,
+                          ]}
+                        >
+                          {tipo === TIPO_RECEPTOR.EMPLEADO
+                            ? "Empleado"
+                            : "Receptor externo"}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </View>
-
-                <View style={{ height: 10 }} />
-
                 {tipoReceptor === TIPO_RECEPTOR.RECEPTOR ? (
                   <>
                     <Text style={styles.label}>Seleccionar receptor:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(receptorSelId)}
                       onValueChange={(val) => {
                         setReceptorSelId(val);
-                        const rec = receptoresBD.find(
+                        const r = receptoresBD.find(
                           (r) => String(r.idReceptores) === String(val),
                         );
-                        setReceptorSelNombre(rec?.nomRec || "");
-                        setReceptorCargo(rec?.emprRec || "");
+                        setReceptorSelNombre(r?.nomRec || "");
+                        setReceptorCargo(r?.emprRec || "");
                       }}
                       colors={c}
                     >
@@ -832,36 +748,36 @@ export default function MemorandumScreen() {
                       />
                       {receptoresBD
                         .filter((r) => r.estRec === "Activo")
-                        .map((rec) => (
+                        .map((r) => (
                           <Picker.Item
-                            key={`rec-${rec.idReceptores}`}
-                            label={`${rec.nomRec} — ${rec.emprRec}`}
-                            value={String(rec.idReceptores)}
+                            key={r.idReceptores}
+                            label={`${r.nomRec} — ${r.emprRec}`}
+                            value={String(r.idReceptores)}
                             color={c.pickerColor}
                           />
                         ))}
-                    </ThemedPicker>
-                    {receptorCargo ? (
+                    </TP>
+                    {receptorCargo && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>
                           Empresa/Cargo:{" "}
                         </Text>
                         {receptorCargo}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 ) : (
                   <>
                     <Text style={styles.label}>Seleccionar empleado:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(empleadoSelId)}
                       onValueChange={(val) => {
                         setEmpleadoSelId(val);
-                        const emp = empleadosBD.find(
+                        const e = empleadosBD.find(
                           (e) => String(e.idEmpleados) === String(val),
                         );
-                        setEmpleadoSelNombre(emp?.nomEmp || "");
-                        setEmpleadoCargo(emp?.cargoEmp || "");
+                        setEmpleadoSelNombre(e?.nomEmp || "");
+                        setEmpleadoCargo(e?.cargoEmp || "");
                       }}
                       colors={c}
                     >
@@ -870,31 +786,31 @@ export default function MemorandumScreen() {
                         value=""
                         color={c.textMuted}
                       />
-                      {empleadosBD.map((emp) => (
+                      {empleadosBD.map((e) => (
                         <Picker.Item
-                          key={`emp-${emp.idEmpleados}`}
-                          label={`${emp.nomEmp} — ${emp.cargoEmp}`}
-                          value={String(emp.idEmpleados)}
+                          key={e.idEmpleados}
+                          label={`${e.nomEmp} — ${e.cargoEmp}`}
+                          value={String(e.idEmpleados)}
                           color={c.pickerColor}
                         />
                       ))}
-                    </ThemedPicker>
-                    {empleadoCargo ? (
+                    </TP>
+                    {empleadoCargo && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>Cargo: </Text>
                         {empleadoCargo}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 )}
               </>
             )}
           </View>
 
-          {/* CARD: Asunto */}
+          {/* Asunto */}
           <View style={styles.card}>
             <Text style={styles.label}>Asunto:</Text>
-            <ThemedInput
+            <TI
               value={asunto}
               onChangeText={setAsunto}
               placeholder="Ej. Respuesta a Memorándum GAF-84-2026..."
@@ -903,13 +819,13 @@ export default function MemorandumScreen() {
             />
           </View>
 
-          {/* CARD: Agregar párrafos (solo edición) */}
+          {/* Agregar párrafos */}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>CUERPO DEL MEMORÁNDUM</Text>
               <View style={{ height: 12 }} />
-              <Text style={styles.label}>Párrafo / punto a agregar:</Text>
-              <ThemedInput
+              <Text style={styles.label}>Párrafo a agregar:</Text>
+              <TI
                 style={{
                   height: 90,
                   textAlignVertical: "top",
@@ -936,7 +852,7 @@ export default function MemorandumScreen() {
             </View>
           )}
 
-          {/* CARD: Lista de párrafos */}
+          {/* Lista párrafos */}
           {items.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.label}>
@@ -951,7 +867,13 @@ export default function MemorandumScreen() {
                   <Text style={styles.itemDesc}>{item.desc_MMDet}</Text>
                   {!isReadOnly && (
                     <TouchableOpacity
-                      onPress={() => eliminarItem(item._idTemporal)}
+                      onPress={() =>
+                        setItems(
+                          items.filter(
+                            (i) => i._idTemporal !== item._idTemporal,
+                          ),
+                        )
+                      }
                     >
                       <MaterialCommunityIcons
                         name="delete"
@@ -965,7 +887,21 @@ export default function MemorandumScreen() {
             </View>
           )}
 
-          {/* BOTONES */}
+          {/* ── Campos dinámicos de la plantilla ── */}
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
+
+          {/* Botones */}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity

@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -23,14 +22,14 @@ import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { generarHTMLRetiro } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
-
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
 import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-//Paleta de colores por tema
 const P = {
   dark: {
     bg: "#121212",
@@ -40,7 +39,6 @@ const P = {
     border2: "#444444",
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
-    textSub: "#E0E0E0",
     accent: "#60A5FA",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
@@ -59,7 +57,6 @@ const P = {
     border2: "#CBD5E1",
     text: "#0F172A",
     textMuted: "#64748B",
-    textSub: "#334155",
     accent: "#09528E",
     pickerBg: "#F1F5F9",
     pickerColor: "#0F172A",
@@ -78,8 +75,6 @@ const ThemedInput = ({
   placeholder,
   multiline,
   editable,
-  keyboardType,
-  autoCapitalize,
   style,
   colors,
 }) => (
@@ -103,8 +98,6 @@ const ThemedInput = ({
     placeholderTextColor={colors.textMuted}
     multiline={multiline}
     editable={editable}
-    keyboardType={keyboardType}
-    autoCapitalize={autoCapitalize}
   />
 );
 
@@ -147,28 +140,24 @@ export default function ActaRetiroScreen() {
   const isReadOnly = mode === "view";
   const tipoActa = "RETIRO";
   const { showAlert } = useAlert();
-
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  // Estados catálogos
+  const { camposExtra, tablasExtra } = usePlantillaDinamica("RETIRO");
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
+
   const [oficinasBD, setOficinasBD] = useState([]);
   const [unidadesList, setUnidadesList] = useState([]);
   const [cargosList, setCargosList] = useState([]);
-  const [empleadosBD, setEmpleadosBD] = useState([]);
   const [tiposEquipoBD, setTiposEquipoBD] = useState([]);
-  const [marcasBD, setMarcasBD] = useState([]);
-  const [modelosBD, setModelosBD] = useState([]);
   const [receptoresBD, setReceptoresBD] = useState([]);
-
-  // Estados de filtros dinámicos
   const [empleadosFiltrados, setEmpleadosFiltrados] = useState([]);
   const [marcasFiltradas, setMarcasFiltradas] = useState([]);
   const [modelosFiltrados, setModelosFiltrados] = useState([]);
   const [cargandoMarcas, setCargandoMarcas] = useState(false);
   const [cargandoModelos, setCargandoModelos] = useState(false);
 
-  // Estados del formulario
   const [usuarioLogueado, setUsuarioLogueado] = useState("");
   const [cargoLogueado, setCargoLogueado] = useState("");
   const [tipoDestinatario, setTipoDestinatario] = useState("EMPLEADO");
@@ -181,7 +170,6 @@ export default function ActaRetiroScreen() {
   const [receptorSelNombre, setReceptorSelNombre] = useState("");
   const [receptorEmpresa, setReceptorEmpresa] = useState("");
   const [receptorCargo, setReceptorCargo] = useState("");
-
   const [items, setItems] = useState([]);
   const [tempTipo, setTempTipo] = useState("");
   const [tempMarca, setTempMarca] = useState("");
@@ -191,159 +179,136 @@ export default function ActaRetiroScreen() {
   const [tempInv, setTempInv] = useState("");
   const [tempDesc, setTempDesc] = useState("");
   const [tempDescripcion, setTempDescripcion] = useState("");
-  const [tempAsignado, setTempAsignado] = useState("");
   const [tempObs, setTempObs] = useState("");
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
-
   const [imagenes, setImagenes] = useState([]);
   const [subiendoImagen, setSubiendoImagen] = useState(false);
 
-  //CARGAR DATOS
   useEffect(() => {
-    const cargarDatosActa = async () => {
-      if (id) {
-        try {
-          const res = await api.get(`/actas/procesadas/${tipoActa}/${id}`);
-          const acta = Array.isArray(res.data) ? res.data[0] : res.data;
-          if (!acta) return;
-
-          const tipo = acta.tipoDestinatario || "EMPLEADO";
-          setTipoDestinatario(tipo);
-
-          if (tipo === "RECEPTOR") {
-            setReceptorSelNombre(acta.receptor?.nombre || "");
-            setReceptorCargo(acta.receptor?.cargo || "");
-            setReceptorEmpresa(acta.receptor?.empresa || "");
-          } else {
-            setEmpleadoSelNombre(acta.receptor?.nombre || "");
-            setCargoSel(
-              acta.receptor?.cargo === "S/C" ? "" : acta.receptor?.cargo || "",
-            );
-            setOficinaSel(acta.receptor?.oficina || "");
-            setUnidadSel(acta.receptor?.unidad || "");
-          }
-
-          setTempDesc(acta.asunto || "");
-          setTempDescripcion(acta.descripcion || "");
-          setTempObs(acta.observacion || "");
-          setCorrelativo(acta.correlativo || "");
-
-          if (acta.items?.length > 0) {
-            const itemsMapeados = acta.items.map((item) => ({
+    if (!id) return;
+    (async () => {
+      try {
+        const res = await api.get(`/actas/procesadas/${tipoActa}/${id}`);
+        const acta = Array.isArray(res.data) ? res.data[0] : res.data;
+        if (!acta) return;
+        const tipo = acta.tipoDestinatario || "EMPLEADO";
+        setTipoDestinatario(tipo);
+        if (tipo === "RECEPTOR") {
+          setReceptorSelNombre(acta.receptor?.nombre || "");
+          setReceptorCargo(acta.receptor?.cargo || "");
+          setReceptorEmpresa(acta.receptor?.empresa || "");
+        } else {
+          setEmpleadoSelNombre(acta.receptor?.nombre || "");
+          setCargoSel(
+            acta.receptor?.cargo === "S/C" ? "" : acta.receptor?.cargo || "",
+          );
+          setOficinaSel(acta.receptor?.oficina || "");
+          setUnidadSel(acta.receptor?.unidad || "");
+        }
+        setTempDesc(acta.asunto || "");
+        setTempDescripcion(acta.descripcion || "");
+        setTempObs(acta.observacion || "");
+        setCorrelativo(acta.correlativo || "");
+        if (acta.items?.length > 0) {
+          setItems(
+            acta.items.map((item) => ({
               ...item,
               tipo: item.tipo || "Equipo",
-              marca: item.marca || "",
-              modelo: item.modelo || "",
-              serie: item.serie || "",
-              numFicha: item.numFicha || "",
-              numInv: item.numInv || "",
-              asignado_a: item.asignado_a || "",
               _idTemporal: Math.random().toString(),
-            }));
-            setItems(itemsMapeados);
-          }
-          if (acta.imagenes && acta.imagenes.length > 0) {
-            const imagenesFormateadas = acta.imagenes.map((url, idx) => ({
-              uri: url, // URL pública de Supabase
+            })),
+          );
+        }
+
+        if (acta.campos_extra) {
+          const parsed =
+            typeof acta.campos_extra === "string"
+              ? JSON.parse(acta.campos_extra)
+              : acta.campos_extra;
+          setValoresCamposExtra(parsed.campos || {});
+          setFilasTablas(parsed.tablas || {});
+        }
+        if (acta.imagenes?.length > 0) {
+          setImagenes(
+            acta.imagenes.map((url, idx) => ({
+              uri: url,
               fileName: `img_${idx}.jpg`,
               type: "image/jpeg",
-            }));
-            setImagenes(imagenesFormateadas);
-          }
-        } catch (error) {
-          console.error("Error trayendo acta:", error);
-          showAlert({
-            title: "Error",
-            message: "No se pudo cargar el detalle del acta",
-          });
+            })),
+          );
         }
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarDatosActa();
+    })();
   }, [id]);
 
+  // CARGA CATÁLOGOS
   useEffect(() => {
-    const cargarCatalogos = async () => {
+    (async () => {
       try {
         const nombre = await AsyncStorage.getItem("nomUsu");
         const cargo = await AsyncStorage.getItem("cargoUsu");
         if (nombre) setUsuarioLogueado(nombre);
         if (cargo) setCargoLogueado(cargo);
-
-        const [resEmp, resOfi, resTipo, resMarca, resMod, resRec] =
-          await Promise.all([
-            api.get("/catalogos/empleados"),
-            api.get("/catalogos/oficinas"),
-            api.get("/catalogos/tiposEquipo"),
-            api.get("/catalogos/marcas"),
-            api.get("/catalogos/modelos"),
-            api.get("/receptores"),
-          ]);
-
-        setEmpleadosBD(resEmp.data);
+        const [resEmp, resOfi, resTipo, resRec] = await Promise.all([
+          api.get("/catalogos/empleados"),
+          api.get("/catalogos/oficinas"),
+          api.get("/catalogos/tiposEquipo"),
+          api.get("/receptores"),
+        ]);
         setOficinasBD(resOfi.data);
         setTiposEquipoBD(resTipo.data);
-        setMarcasBD(resMarca.data);
-        setModelosBD(resMod.data);
         setReceptoresBD(resRec.data);
-      } catch (error) {
-        console.error("Error al cargar datos:", error);
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarCatalogos();
+    })();
   }, []);
 
-  //UNIDADES Y CARGOS
   useEffect(() => {
-    if (oficinaSel) {
-      const filtradas = oficinasBD.filter(
-        (item) => String(item.nomOficina).trim() === String(oficinaSel).trim(),
-      );
-      const unicas = [
-        ...new Set(
-          filtradas.map((item) =>
-            item.unidad ? String(item.unidad).trim() : null,
-          ),
-        ),
-      ].filter(Boolean);
-      setUnidadesList(unicas);
-    } else {
+    if (!oficinaSel) {
       setUnidadesList([]);
+      return;
     }
+    const filtradas = oficinasBD.filter(
+      (i) => String(i.nomOficina).trim() === String(oficinaSel).trim(),
+    );
+    setUnidadesList(
+      [
+        ...new Set(
+          filtradas.map((i) => (i.unidad ? String(i.unidad).trim() : null)),
+        ),
+      ].filter(Boolean),
+    );
   }, [oficinaSel, oficinasBD]);
 
   useEffect(() => {
-    if (oficinaSel && unidadSel) {
-      const filtrados = oficinasBD.filter(
-        (item) =>
-          String(item.nomOficina).trim() === String(oficinaSel).trim() &&
-          String(item.unidad).trim() === String(unidadSel).trim(),
-      );
-      const unicos = [
-        ...new Set(filtrados.map((item) => item.cargoOfi)),
-      ].filter(Boolean);
-      setCargosList(unicos);
-    } else {
+    if (!oficinaSel || !unidadSel) {
       setCargosList([]);
+      return;
     }
+    const filtrados = oficinasBD.filter(
+      (i) =>
+        String(i.nomOficina).trim() === String(oficinaSel).trim() &&
+        String(i.unidad).trim() === String(unidadSel).trim(),
+    );
+    setCargosList(
+      [...new Set(filtrados.map((i) => i.cargoOfi))].filter(Boolean),
+    );
   }, [oficinaSel, unidadSel, oficinasBD]);
 
-  //FILTRO EMPLEADOS
   useEffect(() => {
     if (!oficinaSel) {
       setEmpleadosFiltrados([]);
-      setEmpleadoSelId("");
-      setEmpleadoSelNombre("");
       return;
     }
     api
       .get(`/catalogos/empleados/porOficina/${encodeURIComponent(oficinaSel)}`)
       .then((res) => setEmpleadosFiltrados(res.data))
-      .catch((err) => console.error("Error filtrando empleados:", err));
+      .catch(console.error);
   }, [oficinaSel]);
 
-  // FILTRO MARCAS
   useEffect(() => {
     if (!tempTipo) {
       setMarcasFiltradas([]);
@@ -361,11 +326,10 @@ export default function ActaRetiroScreen() {
         setTempModelo("");
         setModelosFiltrados([]);
       })
-      .catch((err) => console.error("Error filtrando marcas:", err))
+      .catch(console.error)
       .finally(() => setCargandoMarcas(false));
   }, [tempTipo]);
 
-  //FILTRO MODELOS
   useEffect(() => {
     if (!tempTipo || !tempMarca) {
       setModelosFiltrados([]);
@@ -381,72 +345,95 @@ export default function ActaRetiroScreen() {
         setModelosFiltrados(res.data);
         setTempModelo("");
       })
-      .catch((err) => console.error("Error filtrando modelos:", err))
+      .catch(console.error)
       .finally(() => setCargandoModelos(false));
   }, [tempTipo, tempMarca]);
 
-  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    const alertButtons =
-      botones.length > 0
-        ? botones.map((btn) => ({
-            text: btn.text,
-            style:
-              btn.style === "cancel"
-                ? "cancel"
-                : btn.style === "destructive"
-                  ? "danger"
-                  : "primary",
-            onPress: btn.onPress,
-          }))
-        : [{ text: "Aceptar" }];
+  // CAMPOS DINÁMICOS
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const nuevas = [...(prev[tablaId] || [])];
+        nuevas[index] = { ...nuevas[index], [colId]: valor };
+        return { ...prev, [tablaId]: nuevas };
+      }),
+    [],
+  );
 
+  //FORMULARIO HELPERS
+  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
     showAlert({
       title: titulo,
       message: mensaje,
-      buttons: alertButtons,
+      buttons:
+        botones.length > 0
+          ? botones.map((btn) => ({
+              text: btn.text,
+              style:
+                btn.style === "cancel"
+                  ? "cancel"
+                  : btn.style === "danger"
+                    ? "danger"
+                    : "primary",
+              onPress: btn.onPress,
+            }))
+          : [{ text: "Aceptar" }],
     });
   };
 
   const agregarItem = () => {
     if (!tempTipo || !tempMarca || !tempModelo) {
-      mostrarAlerta(
-        "Atención",
-        "Por favor selecciona Tipo, Marca y Modelo del equipo.",
-      );
+      mostrarAlerta("Atención", "Selecciona Tipo, Marca y Modelo.");
       return;
     }
     if (!tempSerie.trim()) {
       mostrarAlerta("Atención", "El número de serie es obligatorio.");
       return;
     }
-    const nuevoItem = {
-      tipo: tempTipo,
-      marca: tempMarca,
-      modelo: tempModelo,
-      serie: tempSerie,
-      numFicha: tempFicha,
-      numInv: tempInv,
-      asignado_a: tempAsignado,
-      _idTemporal: Date.now().toString(),
-    };
-    setItems([...items, nuevoItem]);
+    setItems((prev) => [
+      ...prev,
+      {
+        tipo: tempTipo,
+        marca: tempMarca,
+        modelo: tempModelo,
+        serie: tempSerie,
+        numFicha: tempFicha,
+        numInv: tempInv,
+        _idTemporal: Date.now().toString(),
+      },
+    ]);
     setTempTipo("");
     setTempMarca("");
     setTempModelo("");
     setTempSerie("");
     setTempFicha("");
     setTempInv("");
-    setTempAsignado("");
   };
 
-  const eliminarItem = (idTemp) => {
-    setItems(items.filter((item) => item._idTemporal !== idTemp));
-  };
-
-  const cancelarActa = () => {
+  const cancelarActa = () =>
     mostrarAlerta(
       "¿Estás seguro?",
-      "Si cancelas, perderás todos los datos ingresados.",
+      "Si cancelas, perderás los datos ingresados.",
       [
         { text: "No, continuar", style: "cancel" },
         {
@@ -456,37 +443,29 @@ export default function ActaRetiroScreen() {
         },
       ],
     );
-  };
 
   const seleccionarImagen = async () => {
     if (subiendoImagen) return;
-
     if (Platform.OS === "web") {
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*";
-      input.multiple = false;
-      input.onchange = (event) => {
-        const file = event.target.files[0];
-        if (file) {
-          // Crear una URL temporal para la vista previa
-          const previewUri = URL.createObjectURL(file);
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file)
           setImagenes((prev) => [
             ...prev,
             {
-              uri: previewUri,
-              file: file,
+              uri: URL.createObjectURL(file),
+              file,
               fileName: file.name,
               type: file.type,
             },
           ]);
-        }
       };
       input.click();
       return;
     }
-
-    // Para móviles
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       mostrarAlerta("Permiso requerido", "Necesitamos acceso a tu galería.");
@@ -498,7 +477,6 @@ export default function ActaRetiroScreen() {
         mediaTypes: ImagePicker.MediaType.Images,
         allowsEditing: true,
         quality: 0.8,
-        base64: false,
       });
       if (!result.canceled) {
         const asset = result.assets[0];
@@ -511,33 +489,27 @@ export default function ActaRetiroScreen() {
           },
         ]);
       }
-    } catch (error) {
-      console.error("Error detallado:", error);
+    } catch (e) {
       mostrarAlerta("Error", "No se pudo seleccionar la imagen.");
     } finally {
       setSubiendoImagen(false);
     }
   };
 
-  const removerImagen = (index) => {
-    setImagenes((prev) => prev.filter((_, i) => i !== index));
-  };
-
   // GUARDAR ACTA
   const generarActa = async () => {
-    // Validaciones
     if (
       tipoDestinatario === "EMPLEADO" &&
       (!empleadoSelId || !empleadoSelNombre)
     ) {
-      mostrarAlerta("Error", "Por favor selecciona un empleado.");
+      mostrarAlerta("Error", "Selecciona un empleado.");
       return;
     }
     if (
       tipoDestinatario === "RECEPTOR" &&
       (!receptorSelId || !receptorSelNombre)
     ) {
-      mostrarAlerta("Error", "Por favor selecciona un receptor.");
+      mostrarAlerta("Error", "Selecciona un receptor.");
       return;
     }
     if (items.length === 0) {
@@ -554,6 +526,10 @@ export default function ActaRetiroScreen() {
     formData.append(
       "idReceptores",
       tipoDestinatario === "RECEPTOR" ? parseInt(receptorSelId) : "",
+    );
+    formData.append(
+      "campos_extra",
+      JSON.stringify({ campos: valoresCamposExtra, tablas: filasTablas }),
     );
     formData.append("asunto", tempDesc);
     formData.append("descripcion", tempDescripcion);
@@ -575,14 +551,10 @@ export default function ActaRetiroScreen() {
         })),
       ),
     );
-
-    // Adjuntar imágenes
     imagenes.forEach((img, idx) => {
-      if (Platform.OS === "web" && img.file) {
-        // Web
+      if (Platform.OS === "web" && img.file)
         formData.append("imagenes", img.file, img.fileName);
-      } else {
-        // Móvil
+      else {
         const fileUri =
           Platform.OS === "android" && !img.uri.startsWith("file://")
             ? `file://${img.uri}`
@@ -594,18 +566,15 @@ export default function ActaRetiroScreen() {
         });
       }
     });
-
     try {
       const response = await api.post("/actas/procesadas", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const actaGuardada = response.data;
-      const correlativoNuevo = actaGuardada.correlativo || "";
+      const correlativoNuevo = response.data.correlativo || "";
       setCorrelativo(correlativoNuevo);
       await generarPDF(correlativoNuevo);
       router.replace("/dashboard");
     } catch (error) {
-      console.error("Error al guardar acta:", error.response?.data || error);
       mostrarAlerta(
         "Error al guardar",
         error.response?.data?.error || "Ocurrió un error inesperado.",
@@ -613,84 +582,64 @@ export default function ActaRetiroScreen() {
     }
   };
 
-  // GENERAR PDF
+  //GENERAR PDF
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
-    if (!correlativoParam && !correlativo && !isReadOnly) {
-      mostrarAlerta("Atención", "Guarda el acta para generar el PDF");
-      return;
-    }
-    const nombreDestinatario =
-      tipoDestinatario === "EMPLEADO" ? empleadoSelNombre : receptorSelNombre;
-    if (!nombreDestinatario) {
-      mostrarAlerta("Atención", "Falta el nombre del destinatario.");
-      return;
-    }
-    if (items.length === 0) {
-      mostrarAlerta("Atención", "Agrega al menos un equipo.");
-      return;
-    }
-
     setIsPrinting(true);
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
-
       const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
         await Promise.all([getLogoURIs(), obtenerPlantillaActiva("RETIRO")]);
 
-      const fechaActual = new Date().toLocaleDateString("es-HN", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-
+      const nombreDestinatario =
+        tipoDestinatario === "EMPLEADO" ? empleadoSelNombre : receptorSelNombre;
       const cargoDestinatario =
         tipoDestinatario === "EMPLEADO" ? cargoSel : receptorCargo;
       const asignadoA =
         tipoDestinatario === "EMPLEADO"
           ? unidadSel || oficinaSel || "-"
           : receptorEmpresa || "-";
+      const fechaActual = new Date().toLocaleDateString("es-HN", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 
-      const convertirImagenABase64 = async (uri) => {
-        if (Platform.OS === "web") {
-          if (uri.startsWith("http") || uri.startsWith("blob:")) return uri;
-          if (uri.startsWith("data:")) return uri;
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
-          });
+      // Convertir imágenes a base64
+      const imagenesBase64 = [];
+      for (const img of imagenes) {
+        try {
+          if (Platform.OS === "web") {
+            if (img.uri.startsWith("http") || img.uri.startsWith("blob:")) {
+              const blob = await fetch(img.uri).then((r) => r.blob());
+              const b64 = await new Promise((res) => {
+                const r = new FileReader();
+                r.onloadend = () => res(r.result);
+                r.readAsDataURL(blob);
+              });
+              imagenesBase64.push(b64);
+            } else {
+              imagenesBase64.push(img.uri);
+            }
+          } else {
+            if (img.uri.startsWith("http")) {
+              imagenesBase64.push(img.uri);
+              continue;
+            }
+            const base64 = await FileSystem.readAsStringAsync(img.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            imagenesBase64.push(`data:image/jpeg;base64,${base64}`);
+          }
+        } catch {
+          imagenesBase64.push(img.uri);
         }
-        // Móvil
-        if (uri.startsWith("http")) return uri;
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return `data:image/jpeg;base64,${base64}`;
-      };
-
-      let imagenesHTML = "";
-      if (imagenes.length > 0) {
-        const imgsBase64 = await Promise.all(
-          imagenes.map(async (img) => ({
-            base64: await convertirImagenABase64(img.uri),
-          })),
-        );
-        imagenesHTML = `
-          <div style="margin-top:20px;page-break-inside:avoid;">
-            <p style="font-weight:bold;font-size:11px;margin-bottom:8px;">Evidencias fotográficas:</p>
-            <div style="display:flex;flex-wrap:wrap;gap:10px;">
-              ${imgsBase64.map((img) => `<img src="${img.base64}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`).join("")}
-            </div>
-          </div>`;
       }
 
       const htmlContent = generarHTMLRetiro({
         data: {
-          emisorNombre: usuarioLogueado || "",
-          emisorCargo: cargoLogueado || "",
+          emisorNombre: usuarioLogueado,
+          emisorCargo: cargoLogueado,
           receptorNombre: nombreDestinatario,
           receptorCargo: cargoDestinatario,
           asunto: tempDesc,
@@ -699,10 +648,12 @@ export default function ActaRetiroScreen() {
           fecha: fechaActual,
           correlativoFinal,
           items: items.map((item) => ({ ...item, asignado_a: asignadoA })),
+          valoresCamposExtra,
+          filasTablas,
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
-        imagenesHTML: imagenesHTML,
+        imagenesBase64,
       });
 
       if (Platform.OS === "web") {
@@ -716,46 +667,36 @@ export default function ActaRetiroScreen() {
             document.head.appendChild(script);
           });
         }
-
-        const opt = {
-          margin: [0, 0, 0, 0],
-          filename: `Acta_Retiro_${correlativoFinal || "temp"}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            letterRendering: true,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        };
-
-        try {
-          await window.html2pdf().set(opt).from(htmlContent, "string").save();
-        } catch (err) {
-          console.error("html2pdf error:", err);
-          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
-        }
+        await window
+          .html2pdf()
+          .set({
+            margin: [0, 0, 0, 0],
+            filename: `Acta_Retiro_${correlativoFinal || "temp"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+            },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(htmlContent, "string")
+          .save();
       } else {
-        // Móvil: usar expo-print
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,
         });
-        const puedCompartir = await Sharing.isAvailableAsync();
-        if (puedCompartir) {
+        if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Acta",
+            dialogTitle: "Guardar Acta",
             UTI: "com.adobe.pdf",
           });
-        } else {
-          mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-        }
+        } else mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
       }
     } catch (err) {
-      console.error("Error al generar PDF:", err.message);
       mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
     } finally {
       setIsPrinting(false);
@@ -800,7 +741,6 @@ export default function ActaRetiroScreen() {
           color: c.textMuted,
           marginBottom: 6,
         },
-        value: { fontSize: 15, fontWeight: "500", color: c.text },
         row: {
           flexDirection: "row",
           justifyContent: "space-between",
@@ -863,67 +803,49 @@ export default function ActaRetiroScreen() {
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE ACTA" : "NUEVA ACTA DE RETIRO"}
         </Text>
-
         <View style={styles.formContainer}>
           <View style={styles.row}>
             <Text style={styles.label}>De:</Text>
-            <Text style={styles.value}>
+            <Text style={{ fontSize: 15, fontWeight: "500", color: c.text }}>
               {usuarioLogueado || "Cargando..."} /{" "}
               {cargoLogueado || "Infotecnología"}
             </Text>
           </View>
 
+          {/* DESTINATARIO*/}
           <View style={styles.card}>
             <View style={styles.toggleContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  tipoDestinatario === "EMPLEADO" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setTipoDestinatario("EMPLEADO");
-                  setReceptorSelId("");
-                  setReceptorSelNombre("");
-                  setReceptorEmpresa("");
-                  setReceptorCargo("");
-                }}
-                disabled={isReadOnly}
-              >
-                <Text
+              {["EMPLEADO", "RECEPTOR"].map((tipo) => (
+                <TouchableOpacity
+                  key={tipo}
                   style={[
-                    styles.toggleBtnText,
-                    tipoDestinatario === "EMPLEADO" &&
-                      styles.toggleBtnTextActive,
+                    styles.toggleBtn,
+                    tipoDestinatario === tipo && styles.toggleBtnActive,
                   ]}
+                  onPress={() => {
+                    setTipoDestinatario(tipo);
+                    setEmpleadoSelId("");
+                    setEmpleadoSelNombre("");
+                    setReceptorSelId("");
+                    setReceptorSelNombre("");
+                    setReceptorEmpresa("");
+                    setReceptorCargo("");
+                    setOficinaSel("");
+                    setUnidadSel("");
+                    setCargoSel("");
+                  }}
+                  disabled={isReadOnly}
                 >
-                  Empleado
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  tipoDestinatario === "RECEPTOR" && styles.toggleBtnActive,
-                ]}
-                onPress={() => {
-                  setTipoDestinatario("RECEPTOR");
-                  setEmpleadoSelId("");
-                  setEmpleadoSelNombre("");
-                  setOficinaSel("");
-                  setUnidadSel("");
-                  setCargoSel("");
-                }}
-                disabled={isReadOnly}
-              >
-                <Text
-                  style={[
-                    styles.toggleBtnText,
-                    tipoDestinatario === "RECEPTOR" &&
-                      styles.toggleBtnTextActive,
-                  ]}
-                >
-                  Receptor externo
-                </Text>
-              </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.toggleBtnText,
+                      tipoDestinatario === tipo && styles.toggleBtnTextActive,
+                    ]}
+                  >
+                    {tipo === "EMPLEADO" ? "Empleado" : "Receptor externo"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             {tipoDestinatario === "EMPLEADO" ? (
@@ -955,15 +877,13 @@ export default function ActaRetiroScreen() {
                         />
                         {[
                           ...new Set(
-                            oficinasBD.map((item) =>
-                              String(item.nomOficina).trim(),
-                            ),
+                            oficinasBD.map((i) => String(i.nomOficina).trim()),
                           ),
                         ]
                           .filter(Boolean)
                           .map((nom, idx) => (
                             <Picker.Item
-                              key={`ofi-${idx}`}
+                              key={idx}
                               label={nom}
                               value={nom}
                               color={c.pickerColor}
@@ -985,22 +905,22 @@ export default function ActaRetiroScreen() {
                       <ThemedPicker
                         selectedValue={unidadSel}
                         colors={c}
+                        enabled={unidadesList.length > 0}
                         onValueChange={(val) => {
                           setUnidadSel(val);
                           setCargoSel("");
                         }}
-                        enabled={unidadesList.length > 0}
                       >
                         <Picker.Item
                           label="Seleccione..."
                           value=""
                           color={c.textMuted}
                         />
-                        {unidadesList.map((unidad, idx) => (
+                        {unidadesList.map((u, idx) => (
                           <Picker.Item
-                            key={`uni-${idx}`}
-                            label={unidad}
-                            value={unidad}
+                            key={idx}
+                            label={u}
+                            value={u}
                             color={c.pickerColor}
                           />
                         ))}
@@ -1008,7 +928,6 @@ export default function ActaRetiroScreen() {
                     )}
                   </View>
                 </View>
-
                 <View style={styles.row}>
                   <View style={{ flex: 1, marginRight: 10 }}>
                     <Text style={styles.label}>Cargo:</Text>
@@ -1022,20 +941,20 @@ export default function ActaRetiroScreen() {
                     ) : (
                       <ThemedPicker
                         selectedValue={cargoSel}
-                        colors={c}
                         onValueChange={setCargoSel}
                         enabled={cargosList.length > 0}
+                        colors={c}
                       >
                         <Picker.Item
                           label="Seleccione..."
                           value=""
                           color={c.textMuted}
                         />
-                        {cargosList.map((cargo, idx) => (
+                        {cargosList.map((car, idx) => (
                           <Picker.Item
-                            key={`car-${idx}`}
-                            label={cargo}
-                            value={cargo}
+                            key={idx}
+                            label={car}
+                            value={car}
                             color={c.pickerColor}
                           />
                         ))}
@@ -1055,27 +974,27 @@ export default function ActaRetiroScreen() {
                       <ThemedPicker
                         selectedValue={String(empleadoSelId)}
                         colors={c}
-                        onValueChange={(val) => {
-                          setEmpleadoSelId(val);
-                          const emp = empleadosFiltrados.find(
-                            (e) => String(e.idEmpleados) === String(val),
-                          );
-                          setEmpleadoSelNombre(emp?.nomEmp || "");
-                        }}
                         enabled={
                           empleadosFiltrados.length > 0 && oficinaSel !== ""
                         }
+                        onValueChange={(val) => {
+                          setEmpleadoSelId(val);
+                          const e = empleadosFiltrados.find(
+                            (e) => String(e.idEmpleados) === String(val),
+                          );
+                          setEmpleadoSelNombre(e?.nomEmp || "");
+                        }}
                       >
                         <Picker.Item
                           label="Seleccione..."
                           value=""
                           color={c.textMuted}
                         />
-                        {empleadosFiltrados.map((item) => (
+                        {empleadosFiltrados.map((e) => (
                           <Picker.Item
-                            key={`emp-${item.idEmpleados}`}
-                            label={item.nomEmp}
-                            value={String(item.idEmpleados)}
+                            key={e.idEmpleados}
+                            label={e.nomEmp}
+                            value={String(e.idEmpleados)}
                             color={c.pickerColor}
                           />
                         ))}
@@ -1101,12 +1020,12 @@ export default function ActaRetiroScreen() {
                       colors={c}
                       onValueChange={(val) => {
                         setReceptorSelId(val);
-                        const rec = receptoresBD.find(
+                        const r = receptoresBD.find(
                           (r) => String(r.idReceptores) === String(val),
                         );
-                        setReceptorSelNombre(rec?.nomRec || "");
-                        setReceptorEmpresa(rec?.emprRec || "");
-                        setReceptorCargo(rec?.cargoRec || "");
+                        setReceptorSelNombre(r?.nomRec || "");
+                        setReceptorEmpresa(r?.emprRec || "");
+                        setReceptorCargo(r?.cargoRec || "");
                       }}
                     >
                       <Picker.Item
@@ -1116,11 +1035,11 @@ export default function ActaRetiroScreen() {
                       />
                       {receptoresBD
                         .filter((r) => r.estRec === "Activo")
-                        .map((rec) => (
+                        .map((r) => (
                           <Picker.Item
-                            key={`rec-${rec.idReceptores}`}
-                            label={rec.nomRec}
-                            value={String(rec.idReceptores)}
+                            key={r.idReceptores}
+                            label={r.nomRec}
+                            value={String(r.idReceptores)}
                             color={c.pickerColor}
                           />
                         ))}
@@ -1176,6 +1095,7 @@ export default function ActaRetiroScreen() {
             </View>
           </View>
 
+          {/*AGREGAR EQUIPO */}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>AGREGAR EQUIPO</Text>
@@ -1192,17 +1112,16 @@ export default function ActaRetiroScreen() {
                       value=""
                       color={c.textMuted}
                     />
-                    {tiposEquipoBD.map((item, idx) => (
+                    {tiposEquipoBD.map((i, idx) => (
                       <Picker.Item
-                        key={`tipo-${idx}`}
-                        label={item.tipo}
-                        value={item.tipo}
+                        key={idx}
+                        label={i.tipo}
+                        value={i.tipo}
                         color={c.pickerColor}
                       />
                     ))}
                   </ThemedPicker>
                 </View>
-
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={styles.label}>
                     Marca:{cargandoMarcas ? " ⏳" : ""}
@@ -1216,7 +1135,7 @@ export default function ActaRetiroScreen() {
                     <Picker.Item
                       label={
                         !tempTipo
-                          ? "Elige tipo primero"
+                          ? "Elige tipo"
                           : cargandoMarcas
                             ? "Cargando..."
                             : "Seleccione..."
@@ -1224,17 +1143,16 @@ export default function ActaRetiroScreen() {
                       value=""
                       color={c.textMuted}
                     />
-                    {marcasFiltradas.map((item, idx) => (
+                    {marcasFiltradas.map((i, idx) => (
                       <Picker.Item
-                        key={`marca-${idx}`}
-                        label={item.marca}
-                        value={item.marca}
+                        key={idx}
+                        label={i.marca}
+                        value={i.marca}
                         color={c.pickerColor}
                       />
                     ))}
                   </ThemedPicker>
                 </View>
-
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>
                     Modelo:{cargandoModelos ? " ⏳" : ""}
@@ -1248,7 +1166,7 @@ export default function ActaRetiroScreen() {
                     <Picker.Item
                       label={
                         !tempMarca
-                          ? "Elige marca primero"
+                          ? "Elige marca"
                           : cargandoModelos
                             ? "Cargando..."
                             : "Seleccione..."
@@ -1256,18 +1174,17 @@ export default function ActaRetiroScreen() {
                       value=""
                       color={c.textMuted}
                     />
-                    {modelosFiltrados.map((item, idx) => (
+                    {modelosFiltrados.map((i, idx) => (
                       <Picker.Item
-                        key={`modelo-${idx}`}
-                        label={item.modelo}
-                        value={item.modelo}
+                        key={idx}
+                        label={i.modelo}
+                        value={i.modelo}
                         color={c.pickerColor}
                       />
                     ))}
                   </ThemedPicker>
                 </View>
               </View>
-
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={[styles.label, { color: c.danger }]}>
@@ -1281,7 +1198,7 @@ export default function ActaRetiroScreen() {
                   />
                 </View>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.label}>Número de Ficha:</Text>
+                  <Text style={styles.label}>N° Ficha:</Text>
                   <ThemedInput
                     value={tempFicha}
                     onChangeText={setTempFicha}
@@ -1289,7 +1206,7 @@ export default function ActaRetiroScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Número de Inventario:</Text>
+                  <Text style={styles.label}>N° Inventario:</Text>
                   <ThemedInput
                     value={tempInv}
                     onChangeText={setTempInv}
@@ -1297,7 +1214,6 @@ export default function ActaRetiroScreen() {
                   />
                 </View>
               </View>
-
               <TouchableOpacity
                 style={[
                   styles.saveBtn,
@@ -1305,18 +1221,15 @@ export default function ActaRetiroScreen() {
                 ]}
                 onPress={agregarItem}
               >
-                <Text style={styles.saveBtnText}>
-                  + Agregar Equipo a la lista
-                </Text>
+                <Text style={styles.saveBtnText}>+ Agregar Equipo</Text>
               </TouchableOpacity>
             </View>
           )}
 
+          {/* ── Lista de equipos ── */}
           {items.length > 0 && (
             <View style={styles.card}>
-              <Text style={styles.label}>
-                Equipos agregados ({items.length}):
-              </Text>
+              <Text style={styles.label}>Equipos ({items.length}):</Text>
               {items.map((item) => (
                 <View
                   key={item._idTemporal}
@@ -1340,7 +1253,13 @@ export default function ActaRetiroScreen() {
                   </View>
                   {!isReadOnly && (
                     <TouchableOpacity
-                      onPress={() => eliminarItem(item._idTemporal)}
+                      onPress={() =>
+                        setItems(
+                          items.filter(
+                            (i) => i._idTemporal !== item._idTemporal,
+                          ),
+                        )
+                      }
                     >
                       <MaterialCommunityIcons
                         name="delete"
@@ -1354,7 +1273,7 @@ export default function ActaRetiroScreen() {
             </View>
           )}
 
-          {/* CARD: Evidencias — agregar antes de buttonsContainer */}
+          {/* EVIDENCIAS */}
           {(imagenes.length > 0 || !isReadOnly) && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Evidencias</Text>
@@ -1362,7 +1281,7 @@ export default function ActaRetiroScreen() {
                 <TouchableOpacity
                   style={[
                     styles.saveBtn,
-                    { backgroundColor: "#09528e", marginTop: 8 },
+                    { backgroundColor: "#0369a1", marginTop: 8 },
                   ]}
                   onPress={seleccionarImagen}
                   disabled={subiendoImagen}
@@ -1403,7 +1322,11 @@ export default function ActaRetiroScreen() {
                             borderRadius: 12,
                             padding: 2,
                           }}
-                          onPress={() => removerImagen(idx)}
+                          onPress={() =>
+                            setImagenes((prev) =>
+                              prev.filter((_, i) => i !== idx),
+                            )
+                          }
                         >
                           <MaterialCommunityIcons
                             name="close"
@@ -1419,6 +1342,7 @@ export default function ActaRetiroScreen() {
             </View>
           )}
 
+          {/*OBSERVACIÓN */}
           <View style={styles.card}>
             <Text style={styles.label}>Observación:</Text>
             <ThemedInput
@@ -1431,6 +1355,20 @@ export default function ActaRetiroScreen() {
             />
           </View>
 
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
+
+          {/* BOTONES*/}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity style={styles.saveBtn} onPress={generarActa}>
