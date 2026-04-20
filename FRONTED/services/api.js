@@ -6,7 +6,7 @@ import { router } from "expo-router";
 const API_URL =
   Platform.OS === "web"
     ? "http://localhost:3000/api"
-    : "http://192.168.0.4:3000/api"; /*"http://192.168.88.115:3000/api";*/
+    : "http://192.168.0.4:3000/api"; 
 
 const api = axios.create({
   baseURL: API_URL,

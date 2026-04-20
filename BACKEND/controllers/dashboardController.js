@@ -111,7 +111,7 @@ const obtenerDetalle = async (req, res) => {
   const { tipo, id } = req.params;
 
   try {
-    // ── ACTA DE ENTREGA ──────────────────────────────────────────────────────
+    //ACTA ENTREGA
     if (tipo === "ENTREGA") {
       const [encabezado] = await db.query(
         `
@@ -146,7 +146,7 @@ const obtenerDetalle = async (req, res) => {
       const descripcion = items[0]?.descripcion_AEDet || "";
       return res.json({ ...encabezado[0], items, descripcion });
     }
-    // ── ACTA DE RETIRO ───────────────────────────────────────────────────────
+    //ACTA RETIRO
     if (tipo === "RETIRO") {
       const [encabezado] = await db.query(
         `
@@ -182,7 +182,7 @@ const obtenerDetalle = async (req, res) => {
       return res.json({ ...encabezado[0], items, descripcion });
     }
 
-    // ── ACTA DE RECEPCIÓN ────────────────────────────────────────────────────
+    //ACTA RECEPCIÓN
     if (tipo === "RECEPCION") {
       const [encabezado] = await db.query(
         `
@@ -216,7 +216,7 @@ const obtenerDetalle = async (req, res) => {
       return res.json({ ...encabezado[0], items });
     }
 
-    // ── MEMORÁNDUM ───────────────────────────────────────────────────────────
+    //MEMORANDUM
     if (tipo === "MEMORANDUM") {
       const [encabezado] = await db.query(
         `
@@ -247,7 +247,7 @@ const obtenerDetalle = async (req, res) => {
       return res.json({ ...encabezado[0], items });
     }
 
-    // ── OFICIO ───────────────────────────────────────────────────────────────
+    //OFICIO
     if (tipo === "OFICIO") {
       const [encabezado] = await db.query(
         `
@@ -294,7 +294,7 @@ const obtenerDetalle = async (req, res) => {
      LEFT JOIN empleados  e ON a.idEmpleados  = e.idEmpleados
      LEFT JOIN receptores r ON a.idReceptores = r.idReceptores
      LEFT JOIN usuarios   u ON a.idUsuarios   = u.idUsuarios
-     WHERE a.idPase_SalidaEnc = ?`, // ← nombre correcto del PK
+     WHERE a.idPase_SalidaEnc = ?`, 
         [id],
       );
       if (encabezado.length === 0)
@@ -313,7 +313,7 @@ const obtenerDetalle = async (req, res) => {
       return res.json({ ...encabezado[0], items });
     }
 
-    // ── REPORTE ──────────────────────────────────────────────────────────────
+    //REPORTE
     if (tipo === "REPORTE") {
       const [encabezado] = await db.query(
         `
@@ -341,7 +341,6 @@ const obtenerDetalle = async (req, res) => {
         return res.status(404).json({ mensaje: "Reporte no encontrado" });
       return res.json({ ...encabezado[0], items: [] });
     }
-    // ── Tipo no reconocido ───────────────────────────────────────────────────
     return res
       .status(400)
       .json({ error: `Tipo de documento no reconocido: ${tipo}` });

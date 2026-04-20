@@ -10,7 +10,7 @@ export const getLogoURIs = async () => {
   if (cachedURIs) return cachedURIs;
 
   try {
-    // 1. Verificar logos personalizados en AsyncStorage
+    //Verificar logos personalizados en AsyncStorage
     const customConadeh = await AsyncStorage.getItem("logo_conadeh_custom");
     const customInfo = await AsyncStorage.getItem("logo_info_custom");
 
@@ -20,13 +20,13 @@ export const getLogoURIs = async () => {
       return cachedURIs;
     }
 
-    // 2. Cargar assets por defecto
+    //Cargar assets por defecto
     const [assetConadeh, assetInfo] = await Asset.loadAsync([
       require("../assets/images/logoCompleto.png"),
       require("../assets/images/logoInfo.jpeg"),
     ]);
 
-    // 3. Función auxiliar para obtener data URI (base64) de un Asset
+    //Función auxiliar para obtener data URI (base64) de un Asset
     const assetToBase64 = async (asset, mimeType) => {
       if (Platform.OS === "web") {
         // En web: fetch la URL del asset y convertir a base64
@@ -46,7 +46,7 @@ export const getLogoURIs = async () => {
       }
     };
 
-    // 4. Obtener URIs 
+    //Obtener URIs 
     let uriConadeh = customConadeh;
     let uriInfo = customInfo;
 

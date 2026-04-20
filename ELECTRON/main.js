@@ -18,8 +18,8 @@ const fs = require("fs");
 // Variables de entorno
 // En producción: carga la app compilada (dist/)
 // En desarrollo: apunta al servidor de Expo
-//const isDev = process.env.NODE_ENV === "development";
-const isDev = true;
+const isDev = !app.isPackaged;
+//const isDev = true;
 const EXPO_URL = process.env.EXPO_URL || "http://localhost:8081";
 
 let mainWindow = null;
@@ -39,6 +39,7 @@ function createSplashWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
   });
 
@@ -52,15 +53,15 @@ function createMainWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    show: false, 
+    show: false,
     center: true,
     title: "CONADEH — Sistema de Gestión Documental",
     icon: path.join(__dirname, "../assets/icon.png"),
-    backgroundColor: "#0f172a", 
+    backgroundColor: "#0f172a",
 
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      nodeIntegration: false, 
+      nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
@@ -75,14 +76,19 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools(); // abre DevTools en desarrollo
   } else {
     // Modo producción: carga el build estático de Expo
-    const indexPath = path.join(__dirname, "../dist/index.html");
-    if (fs.existsSync(indexPath)) {
-      mainWindow.loadFile(indexPath);
-    } else {
-      // Fallback: si no existe dist/, intenta la carpeta web-build
-      const webBuildPath = path.join(__dirname, "../web-build/index.html");
-      mainWindow.loadFile(webBuildPath);
+    const indexPath = app.isPackaged
+      ? path.join(process.resourcesPath, "dist/index.html")
+      : path.join(__dirname, "../dist/index.html");
+    if (!fs.existsSync(indexPath)) {
+      dialog.showErrorBox(
+        "Error crítico",
+        "No se encontró la carpeta dist. Ejecuta: npm run build:web",
+      );
+      app.quit();
+      return;
     }
+
+    mainWindow.loadFile(indexPath);
   }
 
   //Eventos de la ventana
@@ -119,7 +125,7 @@ function createMainWindow() {
   });
 }
 
-//Menú de la aplicación 
+//Menú de la aplicación
 function buildMenu() {
   const template = [
     {
@@ -250,11 +256,8 @@ ipcMain.handle("open-external", (event, url) => {
 app.whenReady().then(() => {
   buildMenu();
   createSplashWindow();
-
-  // Pequeña pausa para que el splash se vea antes de cargar la app principal
-  setTimeout(() => {
-    createMainWindow();
-  }, 800);
+  createMainWindow();
+});
 
   // macOS: re-crea la ventana si se hace click en el dock sin ventanas abiertas
   app.on("activate", () => {
@@ -262,7 +265,6 @@ app.whenReady().then(() => {
       createMainWindow();
     }
   });
-});
 
 // Cierra la app cuando se cierran todas las ventanas (excepto macOS)
 app.on("window-all-closed", () => {

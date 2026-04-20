@@ -27,7 +27,7 @@ export default function UsuariosScreen() {
   const { width } = useWindowDimensions();
   const isSmall = width < 400;
 
-  /* ── Tema ── */
+  /* TEMA*/
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -50,7 +50,7 @@ export default function UsuariosScreen() {
   const modalBg = isDark ? "#1e293b" : "#ffffff";
   const overlayBg = isDark ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0.45)";
 
-  /* ── Estado ── */
+  /* ESTADO */
   const [usuarios, setUsuarios] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
@@ -131,7 +131,7 @@ export default function UsuariosScreen() {
     );
   });
 
-  /* ── Input reutilizable para el modal ── */
+  /* INPUT MODAL*/
   const ModalInput = ({ label, value, onChange, ...props }) => (
     <View style={{ marginBottom: 14 }}>
       <Text style={[styles.label, { color: subColor }]}>{label}</Text>

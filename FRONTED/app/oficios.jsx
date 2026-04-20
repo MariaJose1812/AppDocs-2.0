@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -20,7 +19,8 @@ import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { generarHTMLOficio } from "../utils/documentosHTML";
 import { useTheme } from "../hooks/themeContext";
 import { useAlert } from "../context/alertContext";
-
+import { usePlantillaDinamica } from "../hooks/usePlantillaDinamica";
+import CamposDinamicos from "../components/camposDinamicos";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
@@ -36,7 +36,6 @@ const P = {
     border2: "#444444",
     text: "#FFFFFF",
     textMuted: "#A0A0A0",
-    textSub: "#E0E0E0",
     accent: "#60A5FA",
     pickerBg: "#2C2C2C",
     pickerColor: "#FFFFFF",
@@ -57,7 +56,6 @@ const P = {
     border2: "#CBD5E1",
     text: "#0F172A",
     textMuted: "#64748B",
-    textSub: "#334155",
     accent: "#09528E",
     pickerBg: "#F1F5F9",
     pickerColor: "#0F172A",
@@ -72,14 +70,12 @@ const P = {
   },
 };
 
-const ThemedInput = ({
+const TI = ({
   value,
   onChangeText,
   placeholder,
   multiline,
   editable,
-  keyboardType,
-  autoCapitalize,
   style,
   colors,
 }) => (
@@ -103,18 +99,9 @@ const ThemedInput = ({
     placeholderTextColor={colors.textMuted}
     multiline={multiline}
     editable={editable}
-    keyboardType={keyboardType}
-    autoCapitalize={autoCapitalize}
   />
 );
-
-const ThemedPicker = ({
-  selectedValue,
-  onValueChange,
-  enabled,
-  children,
-  colors,
-}) => (
+const TP = ({ selectedValue, onValueChange, enabled, children, colors }) => (
   <View
     style={{
       backgroundColor: colors.pickerBg,
@@ -154,19 +141,21 @@ export default function OficioScreen() {
   const { id, mode } = useLocalSearchParams();
   const isReadOnly = mode === "view";
   const { showAlert } = useAlert();
-
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
 
-  //EMISOR
+  // PLANTILLA
+  const { camposExtra, tablasExtra } = usePlantillaDinamica("OFICIO");
+  const [valoresCamposExtra, setValoresCamposExtra] = useState({});
+  const [filasTablas, setFilasTablas] = useState({});
+
+  //ESTADO
   const [emisorNombre, setEmisorNombre] = useState("");
   const [emisorCargo, setEmisorCargo] = useState(EMISOR_DEFAULT.cargo);
   const [emisorTratamiento, setEmisorTratamiento] = useState(
     EMISOR_DEFAULT.tratamiento,
   );
   const [editandoEmisor, setEditandoEmisor] = useState(false);
-
-  //RECEPTOR
   const [tipoReceptor, setTipoReceptor] = useState(TIPO_RECEPTOR.RECEPTOR);
   const [receptoresBD, setReceptoresBD] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
@@ -177,24 +166,19 @@ export default function OficioScreen() {
   const [empleadoSelId, setEmpleadoSelId] = useState("");
   const [empleadoSelNombre, setEmpleadoSelNombre] = useState("");
   const [empleadoCargo, setEmpleadoCargo] = useState("");
-
-  // CONTENIDO
   const [asunto, setAsunto] = useState("");
   const [tempItem, setTempItem] = useState("");
   const [items, setItems] = useState([]);
-
   const [correlativo, setCorrelativo] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
-
   const fechaHoy = new Date().toLocaleDateString("es-HN", {
     day: "numeric",
     month: "long",
     year: "numeric",
   });
 
-  //CARGAR INCIAL
   useEffect(() => {
-    const cargarTodo = async () => {
+    (async () => {
       try {
         const raw = await AsyncStorage.getItem(EMISOR_KEY);
         if (raw) {
@@ -213,22 +197,20 @@ export default function OficioScreen() {
         ]);
         setReceptoresBD(resRec.data);
         setEmpleadosBD(resEmp.data);
-      } catch (err) {
-        console.error("Error cargando datos:", err);
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarTodo();
+    })();
   }, []);
 
-  // CARGAR OFICIO VISTA
+  //CARGA VISTA
   useEffect(() => {
-    const cargarOficio = async () => {
-      if (!id) return;
+    if (!id) return;
+    (async () => {
       try {
         const res = await api.get(`/actas/detalle/OFICIO/${id}`);
         const oficio = Array.isArray(res.data) ? res.data[0] : res.data;
         if (!oficio) return;
-
         const raw = await AsyncStorage.getItem(EMISOR_KEY);
         if (raw) {
           const e = JSON.parse(raw);
@@ -236,68 +218,96 @@ export default function OficioScreen() {
           setEmisorCargo(e.cargo || EMISOR_DEFAULT.cargo);
           setEmisorTratamiento(e.tratamiento || EMISOR_DEFAULT.tratamiento);
         }
-
         setAsunto(oficio.asunto || "");
         setCorrelativo(oficio.correlativo || "");
         setReceptorSelNombre(oficio.receptorNombre || "");
         setReceptorCargo(oficio.receptorCargo || "");
-
-        if (oficio.items?.length > 0) {
+        if (oficio.items?.length > 0)
           setItems(
             oficio.items.map((item, idx) => ({
               desc_OfiDet: item.desc_OfiDet,
               _idTemporal: idx.toString(),
             })),
           );
+        //CAMPOS EXTRA
+        if (oficio.campos_extra) {
+          const parsed =
+            typeof oficio.campos_extra === "string"
+              ? JSON.parse(oficio.campos_extra)
+              : oficio.campos_extra;
+          setValoresCamposExtra(parsed.campos || {});
+          setFilasTablas(parsed.tablas || {});
         }
-      } catch (err) {
-        console.error("Error trayendo oficio:", err);
-        mostrarAlerta("Error", "No se pudo cargar el detalle del oficio.");
+      } catch (e) {
+        console.error(e);
       }
-    };
-    cargarOficio();
+    })();
   }, [id]);
 
-  const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
-    const alertButtons =
-      botones.length > 0
-        ? botones.map((btn) => ({
-            text: btn.text,
-            style:
-              btn.style === "cancel"
-                ? "cancel"
-                : btn.style === "destructive"
-                  ? "danger"
-                  : "primary",
-            onPress: btn.onPress,
-          }))
-        : [{ text: "Aceptar" }];
+  //HANDLERS CAMPOS DINÁMICOS
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const n = [...(prev[tablaId] || [])];
+        n[index] = { ...n[index], [colId]: valor };
+        return { ...prev, [tablaId]: n };
+      }),
+    [],
+  );
 
+  const mostrarAlerta = (titulo, mensaje = "", botones = []) =>
     showAlert({
       title: titulo,
       message: mensaje,
-      buttons: alertButtons,
+      buttons:
+        botones.length > 0
+          ? botones.map((b) => ({
+              text: b.text,
+              style:
+                b.style === "cancel"
+                  ? "cancel"
+                  : b.style === "danger"
+                    ? "danger"
+                    : "primary",
+              onPress: b.onPress,
+            }))
+          : [{ text: "Aceptar" }],
     });
-  };
 
   const guardarEmisor = async () => {
     if (!emisorNombre.trim()) {
-      mostrarAlerta("Atención", "El nombre del firmante no puede estar vacío.");
+      mostrarAlerta("Atención", "El nombre no puede estar vacío.");
       return;
     }
-    try {
-      await AsyncStorage.setItem(
-        EMISOR_KEY,
-        JSON.stringify({
-          nombre: emisorNombre,
-          cargo: emisorCargo,
-          tratamiento: emisorTratamiento,
-        }),
-      );
-      setEditandoEmisor(false);
-    } catch {
-      mostrarAlerta("Error", "No se pudieron guardar los datos del firmante.");
-    }
+    await AsyncStorage.setItem(
+      EMISOR_KEY,
+      JSON.stringify({
+        nombre: emisorNombre,
+        cargo: emisorCargo,
+        tratamiento: emisorTratamiento,
+      }),
+    );
+    setEditandoEmisor(false);
   };
 
   const agregarItem = () => {
@@ -305,20 +315,17 @@ export default function OficioScreen() {
       mostrarAlerta("Atención", "El párrafo no puede estar vacío.");
       return;
     }
-    setItems([
-      ...items,
+    setItems((prev) => [
+      ...prev,
       { desc_OfiDet: tempItem.trim(), _idTemporal: Date.now().toString() },
     ]);
     setTempItem("");
   };
 
-  const eliminarItem = (idTemp) =>
-    setItems(items.filter((i) => i._idTemporal !== idTemp));
-
-  const cancelar = () => {
+  const cancelar = () =>
     mostrarAlerta(
       "¿Estás seguro?",
-      "Si cancelas, perderás todos los datos ingresados.",
+      "Si cancelas, perderás los datos ingresados.",
       [
         { text: "No, continuar", style: "cancel" },
         {
@@ -328,7 +335,6 @@ export default function OficioScreen() {
         },
       ],
     );
-  };
 
   const getNombreParaPDF = () =>
     isReadOnly
@@ -344,7 +350,7 @@ export default function OficioScreen() {
         : receptorCargo;
   const getTratParaPDF = () => receptorTratamiento || "Señor(a)";
 
-  // ── Guardar oficio ──
+  //GUARDAR
   const guardarOficio = async () => {
     if (!emisorNombre.trim()) {
       mostrarAlerta("Error", "Ingresa el nombre del firmante.");
@@ -373,7 +379,6 @@ export default function OficioScreen() {
       );
       return;
     }
-
     await AsyncStorage.setItem(
       EMISOR_KEY,
       JSON.stringify({
@@ -382,28 +387,30 @@ export default function OficioScreen() {
         tratamiento: emisorTratamiento,
       }),
     );
-
     const payload = {
       idEmpleados: idEmp,
       idReceptores: idRec,
       asunto_OFIEnc: asunto,
+      campos_extra: JSON.stringify({
+        campos: valoresCamposExtra,
+        tablas: filasTablas,
+      }),
       items: items.map((i) => ({ desc_OfiDet: i.desc_OfiDet })),
     };
-
     try {
       const response = await api.post("/actas/oficios", payload);
-      const correlativoNuevo = response.data.correlativo || "";
-      setCorrelativo(correlativoNuevo);
-      await generarPDF(correlativoNuevo);
+      setCorrelativo(response.data.correlativo || "");
+      await generarPDF(response.data.correlativo || "");
       router.replace("/dashboard");
     } catch (error) {
       mostrarAlerta(
         "Error al guardar",
-        error.response?.data?.error || "Ocurrió un error inesperado.",
+        error.response?.data?.error || "Error inesperado.",
       );
     }
   };
 
+  //GENERAR PDF
   const generarPDF = async (correlativoParam = "") => {
     if (isPrinting) return;
     if (!correlativoParam && !correlativo && !isReadOnly) {
@@ -421,85 +428,70 @@ export default function OficioScreen() {
       mostrarAlerta("Atención", "No hay contenido para mostrar.");
       return;
     }
-
     setIsPrinting(true);
     try {
       const correlativoFinal = correlativoParam || correlativo || "";
       const [{ conadeh: uriConadeh, info: uriInfo }, cPlantilla] =
         await Promise.all([getLogoURIs(), obtenerPlantillaActiva("OFICIO")]);
-
-      const nombrePara = getNombreParaPDF();
-      const cargoPara = getCargoParaPDF();
-      const tratPara = getTratParaPDF();
-
       const htmlContent = generarHTMLOficio({
         data: {
           emisorNombre,
           emisorCargo,
-          receptorNombre: nombrePara,
-          receptorCargo: cargoPara,
-          receptorTratamiento: tratPara,
+          receptorNombre: getNombreParaPDF(),
+          receptorCargo: getCargoParaPDF(),
+          receptorTratamiento: getTratParaPDF(),
           asunto,
           fecha: fechaHoy,
           correlativoFinal,
           items: items.map((i) => ({ desc_OfiDet: i.desc_OfiDet })),
+          valoresCamposExtra,
+          filasTablas,
         },
         config: cPlantilla,
         logos: { uriConadeh, uriInfo },
       });
-
-      // ---------- WEB / ELECTRON con html2pdf ----------
       if (Platform.OS === "web") {
         if (typeof window.html2pdf === "undefined") {
           await new Promise((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src =
+            const s = document.createElement("script");
+            s.src =
               "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-            script.onload = resolve;
-            script.onerror = reject;
-            document.head.appendChild(script);
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
           });
         }
-
-        const opt = {
-          margin: [0, 0, 0, 0],
-          filename: `Oficio_${correlativoFinal || "temp"}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            letterRendering: true,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-          },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        };
-
-        try {
-          await window.html2pdf().set(opt).from(htmlContent, "string").save();
-        } catch (err) {
-          console.error("html2pdf error:", err);
-          mostrarAlerta("Error", "No se pudo generar el PDF: " + err.message);
-        }
+        await window
+          .html2pdf()
+          .set({
+            margin: [0, 0, 0, 0],
+            filename: `Oficio_${correlativoFinal || "temp"}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              logging: false,
+            },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          })
+          .from(htmlContent, "string")
+          .save();
       } else {
         const { uri } = await Print.printToFileAsync({
           html: htmlContent,
           base64: false,
         });
-        const puedCompartir = await Sharing.isAvailableAsync();
-        if (puedCompartir) {
+        if (await Sharing.isAvailableAsync())
           await Sharing.shareAsync(uri, {
             mimeType: "application/pdf",
-            dialogTitle: "Guardar o compartir Acta",
+            dialogTitle: "Guardar Oficio",
             UTI: "com.adobe.pdf",
           });
-        } else {
-          mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
-        }
+        else mostrarAlerta("PDF generado", `Guardado en: ${uri}`);
       }
     } catch (err) {
-      console.error("Error al generar PDF:", err.message);
-      mostrarAlerta("Error", "No se pudo generar el documento: " + err.message);
+      mostrarAlerta("Error", "No se pudo generar: " + err.message);
     } finally {
       setIsPrinting(false);
     }
@@ -556,7 +548,6 @@ export default function OficioScreen() {
           borderColor: c.border,
         },
         sinEmisorText: { fontSize: 13, color: c.accent, fontWeight: "600" },
-        // Toggle igual a actaRetiro
         toggleContainer: {
           flexDirection: "row",
           backgroundColor: c.toggleBg,
@@ -570,22 +561,13 @@ export default function OficioScreen() {
           borderRadius: 6,
           alignItems: "center",
         },
-        toggleBtnActive: {
-          backgroundColor: c.primary,
-          elevation: 2,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.15,
-          shadowRadius: 3,
-        },
+        toggleBtnActive: { backgroundColor: c.primary, elevation: 2 },
         toggleBtnText: {
           fontSize: 14,
           fontWeight: "600",
           color: c.toggleInactive,
         },
-        toggleBtnTextActive: {
-          color: "#fff",
-        },
+        toggleBtnTextActive: { color: "#fff" },
         receptorInfo: { fontSize: 13, color: c.textMuted, marginTop: 6 },
         label: {
           fontSize: 14,
@@ -593,26 +575,7 @@ export default function OficioScreen() {
           color: c.textMuted,
           marginBottom: 6,
         },
-        input: {
-          backgroundColor: c.inputBg,
-          borderWidth: 1,
-          borderColor: c.inputBorder,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          fontSize: 15,
-          color: c.text,
-        },
         readOnlyInput: { backgroundColor: c.surface2, color: c.textMuted },
-        pickerWrapper: {
-          backgroundColor: c.pickerBg,
-          borderWidth: 1,
-          borderColor: c.border2,
-          borderRadius: 10,
-          justifyContent: "center",
-          height: 44,
-          marginBottom: 4,
-        },
         itemRow: {
           flexDirection: "row",
           alignItems: "flex-start",
@@ -620,7 +583,6 @@ export default function OficioScreen() {
           borderBottomWidth: 1,
           borderColor: c.border,
           gap: 10,
-          flexWrap: "wrap",
         },
         itemNumBadge: {
           width: 24,
@@ -639,8 +601,6 @@ export default function OficioScreen() {
           lineHeight: 20,
           flexWrap: "wrap",
           flexShrink: 1,
-          width: "100%",
-          ...(Platform.OS === "web" && { wordBreak: "break-word" }),
         },
         buttonsContainer: {
           flexDirection: "row",
@@ -684,9 +644,8 @@ export default function OficioScreen() {
         <Text style={styles.mainTitle}>
           {isReadOnly ? "DETALLE DE OFICIO" : "NUEVO OFICIO"}
         </Text>
-
         <View style={styles.formContainer}>
-          {/* CARD: DE (firmante) */}
+          {/* Firmante */}
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.sectionTitle}>DE: Firmante</Text>
@@ -713,11 +672,10 @@ export default function OficioScreen() {
                 </TouchableOpacity>
               )}
             </View>
-
             {editandoEmisor ? (
               <>
                 <Text style={styles.label}>Nombre:</Text>
-                <ThemedInput
+                <TI
                   value={emisorNombre}
                   onChangeText={setEmisorNombre}
                   placeholder="Nombre completo..."
@@ -725,7 +683,7 @@ export default function OficioScreen() {
                   style={{ marginBottom: 12 }}
                 />
                 <Text style={styles.label}>Cargo:</Text>
-                <ThemedInput
+                <TI
                   value={emisorCargo}
                   onChangeText={setEmisorCargo}
                   placeholder="Cargo..."
@@ -735,7 +693,7 @@ export default function OficioScreen() {
                 <Text style={styles.label}>
                   Tratamiento (Ej: Ingeniero, Licenciado):
                 </Text>
-                <ThemedInput
+                <TI
                   value={emisorTratamiento}
                   onChangeText={setEmisorTratamiento}
                   placeholder="Ingeniero"
@@ -745,108 +703,77 @@ export default function OficioScreen() {
                   Estos datos se guardan como valores por defecto.
                 </Text>
               </>
+            ) : emisorNombre ? (
+              <>
+                <Text style={styles.emisorNombre}>{emisorNombre}</Text>
+                <Text style={styles.emisorCargo}>{emisorCargo}</Text>
+              </>
             ) : (
-              <View>
-                {emisorNombre ? (
-                  <>
-                    <Text style={styles.emisorNombre}>{emisorNombre}</Text>
-                    <Text style={styles.emisorCargo}>{emisorCargo}</Text>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.sinEmisorBtn}
-                    onPress={() => setEditandoEmisor(true)}
-                  >
-                    <MaterialCommunityIcons
-                      name="account-edit-outline"
-                      size={20}
-                      color={c.accent}
-                    />
-                    <Text style={styles.sinEmisorText}>
-                      Configura el firmante — presiona "Cambiar"
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <TouchableOpacity
+                style={styles.sinEmisorBtn}
+                onPress={() => setEditandoEmisor(true)}
+              >
+                <MaterialCommunityIcons
+                  name="account-edit-outline"
+                  size={20}
+                  color={c.accent}
+                />
+                <Text style={styles.sinEmisorText}>
+                  Configura el firmante — presiona "Cambiar"
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
 
-          {/* CARD: PARA (destinatario) */}
+          {/* Destinatario */}
           <View style={styles.card}>
             <View style={{ height: 12 }} />
-
             {isReadOnly ? (
-              <>
-                <Text style={styles.label}>Destinatario:</Text>
-                <ThemedInput
-                  value={`${receptorSelNombre}${receptorCargo ? ` — ${receptorCargo}` : ""}`}
-                  editable={false}
-                  style={styles.readOnlyInput}
-                  colors={c}
-                />
-              </>
+              <TI
+                value={`${receptorSelNombre}${receptorCargo ? ` — ${receptorCargo}` : ""}`}
+                editable={false}
+                style={styles.readOnlyInput}
+                colors={c}
+              />
             ) : (
               <>
-                {/* TOGGLE IGUAL A actaRetiro */}
                 <View style={styles.toggleContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.EMPLEADO);
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorCargo("");
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.EMPLEADO &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Empleado
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.toggleBtn,
-                      tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                        styles.toggleBtnActive,
-                    ]}
-                    onPress={() => {
-                      setTipoReceptor(TIPO_RECEPTOR.RECEPTOR);
-                      setEmpleadoSelId("");
-                      setEmpleadoSelNombre("");
-                      setEmpleadoCargo("");
-                      setReceptorSelId("");
-                      setReceptorSelNombre("");
-                      setReceptorCargo("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.toggleBtnText,
-                        tipoReceptor === TIPO_RECEPTOR.RECEPTOR &&
-                          styles.toggleBtnTextActive,
-                      ]}
-                    >
-                      Receptor externo
-                    </Text>
-                  </TouchableOpacity>
+                  {[TIPO_RECEPTOR.EMPLEADO, TIPO_RECEPTOR.RECEPTOR].map(
+                    (tipo) => (
+                      <TouchableOpacity
+                        key={tipo}
+                        style={[
+                          styles.toggleBtn,
+                          tipoReceptor === tipo && styles.toggleBtnActive,
+                        ]}
+                        onPress={() => {
+                          setTipoReceptor(tipo);
+                          setReceptorSelId("");
+                          setReceptorSelNombre("");
+                          setReceptorCargo("");
+                          setEmpleadoSelId("");
+                          setEmpleadoSelNombre("");
+                          setEmpleadoCargo("");
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.toggleBtnText,
+                            tipoReceptor === tipo && styles.toggleBtnTextActive,
+                          ]}
+                        >
+                          {tipo === TIPO_RECEPTOR.EMPLEADO
+                            ? "Empleado"
+                            : "Receptor externo"}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
                 </View>
 
-                <View style={{ height: 10 }} />
-
+                {/* Tratamiento del destinatario */}
                 <Text style={styles.label}>Tratamiento del destinatario:</Text>
-                <ThemedPicker
+                <TP
                   selectedValue={receptorTratamiento}
                   onValueChange={setReceptorTratamiento}
                   colors={c}
@@ -866,22 +793,21 @@ export default function OficioScreen() {
                       color={c.pickerColor}
                     />
                   ))}
-                </ThemedPicker>
-
+                </TP>
                 <View style={{ height: 10 }} />
 
                 {tipoReceptor === TIPO_RECEPTOR.RECEPTOR ? (
                   <>
                     <Text style={styles.label}>Seleccionar receptor:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(receptorSelId)}
                       onValueChange={(val) => {
                         setReceptorSelId(val);
-                        const rec = receptoresBD.find(
+                        const r = receptoresBD.find(
                           (r) => String(r.idReceptores) === String(val),
                         );
-                        setReceptorSelNombre(rec?.nomRec || "");
-                        setReceptorCargo(rec?.emprRec || "");
+                        setReceptorSelNombre(r?.nomRec || "");
+                        setReceptorCargo(r?.emprRec || "");
                       }}
                       colors={c}
                     >
@@ -892,36 +818,36 @@ export default function OficioScreen() {
                       />
                       {receptoresBD
                         .filter((r) => r.estRec === "Activo")
-                        .map((rec) => (
+                        .map((r) => (
                           <Picker.Item
-                            key={`rec-${rec.idReceptores}`}
-                            label={`${rec.nomRec} — ${rec.emprRec}`}
-                            value={String(rec.idReceptores)}
+                            key={r.idReceptores}
+                            label={`${r.nomRec} — ${r.emprRec}`}
+                            value={String(r.idReceptores)}
                             color={c.pickerColor}
                           />
                         ))}
-                    </ThemedPicker>
-                    {receptorCargo ? (
+                    </TP>
+                    {receptorCargo && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>
                           Empresa/Cargo:{" "}
                         </Text>
                         {receptorCargo}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 ) : (
                   <>
                     <Text style={styles.label}>Seleccionar empleado:</Text>
-                    <ThemedPicker
+                    <TP
                       selectedValue={String(empleadoSelId)}
                       onValueChange={(val) => {
                         setEmpleadoSelId(val);
-                        const emp = empleadosBD.find(
+                        const e = empleadosBD.find(
                           (e) => String(e.idEmpleados) === String(val),
                         );
-                        setEmpleadoSelNombre(emp?.nomEmp || "");
-                        setEmpleadoCargo(emp?.cargoEmp || "");
+                        setEmpleadoSelNombre(e?.nomEmp || "");
+                        setEmpleadoCargo(e?.cargoEmp || "");
                       }}
                       colors={c}
                     >
@@ -930,31 +856,31 @@ export default function OficioScreen() {
                         value=""
                         color={c.textMuted}
                       />
-                      {empleadosBD.map((emp) => (
+                      {empleadosBD.map((e) => (
                         <Picker.Item
-                          key={`emp-${emp.idEmpleados}`}
-                          label={`${emp.nomEmp}`}
-                          value={String(emp.idEmpleados)}
+                          key={e.idEmpleados}
+                          label={`${e.nomEmp} — ${e.cargoEmp}`}
+                          value={String(e.idEmpleados)}
                           color={c.pickerColor}
                         />
                       ))}
-                    </ThemedPicker>
-                    {empleadoCargo ? (
+                    </TP>
+                    {empleadoCargo && (
                       <Text style={styles.receptorInfo}>
                         <Text style={{ fontWeight: "700" }}>Cargo: </Text>
                         {empleadoCargo}
                       </Text>
-                    ) : null}
+                    )}
                   </>
                 )}
               </>
             )}
           </View>
 
-          {/* CARD: Asunto */}
+          {/* Asunto */}
           <View style={styles.card}>
             <Text style={styles.label}>Asunto / Referencia:</Text>
-            <ThemedInput
+            <TI
               value={asunto}
               onChangeText={setAsunto}
               placeholder="Ej. Respuesta a Oficio No. 020-CATSC-CONADEH..."
@@ -963,13 +889,13 @@ export default function OficioScreen() {
             />
           </View>
 
-          {/* CARD: Párrafos (solo edición) */}
+          {/* Cuerpo del oficio */}
           {!isReadOnly && (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>CUERPO DEL OFICIO</Text>
               <View style={{ height: 12 }} />
               <Text style={styles.label}>Párrafo a agregar:</Text>
-              <ThemedInput
+              <TI
                 style={{
                   height: 90,
                   textAlignVertical: "top",
@@ -996,7 +922,7 @@ export default function OficioScreen() {
             </View>
           )}
 
-          {/* CARD: Lista párrafos */}
+          {/* Lista párrafos */}
           {items.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.label}>
@@ -1011,7 +937,13 @@ export default function OficioScreen() {
                   <Text style={styles.itemDesc}>{item.desc_OfiDet}</Text>
                   {!isReadOnly && (
                     <TouchableOpacity
-                      onPress={() => eliminarItem(item._idTemporal)}
+                      onPress={() =>
+                        setItems(
+                          items.filter(
+                            (i) => i._idTemporal !== item._idTemporal,
+                          ),
+                        )
+                      }
                     >
                       <MaterialCommunityIcons
                         name="delete"
@@ -1025,7 +957,21 @@ export default function OficioScreen() {
             </View>
           )}
 
-          {/* BOTONES */}
+          {/*CAMPOS DINÁMICOS*/}
+          <CamposDinamicos
+            camposExtra={camposExtra}
+            tablasExtra={tablasExtra}
+            valores={valoresCamposExtra}
+            onChangeValor={handleChangeValor}
+            filasTablas={filasTablas}
+            onAgregarFila={handleAgregarFila}
+            onEliminarFila={handleEliminarFila}
+            onCambiarFila={handleCambiarFila}
+            c={c}
+            isReadOnly={isReadOnly}
+          />
+
+          {/* Botones */}
           <View style={styles.buttonsContainer}>
             {!isReadOnly && (
               <TouchableOpacity style={styles.saveBtn} onPress={guardarOficio}>

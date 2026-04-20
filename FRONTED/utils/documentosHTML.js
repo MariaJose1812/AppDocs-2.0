@@ -677,7 +677,7 @@ export const generarHTMLPaseSalida = ({ data, config, logos }) => {
   const contenido = `
     ${encabezadoHTML(uriConadeh, uriInfo, colorLinea, "Pase de Salida", correlativoFinal)}
     <p style="font-size:11.5px;text-align:justify;line-height:1.85;margin-bottom:22px;">
-      Por este medio se hace entrega a <strong>${receptorNombre}</strong> de la Empresa
+      Por este medio se hace entrega a <strong>${receptorNombre}</strong> de
       <strong>${receptorEmpresa}</strong>, para que ${motivo} que a continuación se describe:
     </p>
     <table style="width:70%;border-collapse:collapse;margin:0 auto 40px auto;">

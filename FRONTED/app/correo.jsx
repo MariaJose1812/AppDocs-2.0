@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,6 @@ import { getLogoURIs } from "../constants/logosURIS";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
 import { useTheme } from "../hooks/themeContext";
 import { Colors } from "../constants/theme";
-import { FlatList } from "react-native";
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
@@ -51,7 +50,7 @@ export default function CorreoScreen() {
   const inputBorder = isDark ? "#334155" : "#cbd5e1";
   const highlightCol = isDark ? "#60a5fa" : "#09528e";
 
-  //CONFIG TIPOS DE DOCS
+  // CONFIG TIPOS DE DOCS
   const TIPOS_CONFIG = {
     ENTREGA: {
       nombre: "Acta de Entrega",
@@ -116,12 +115,70 @@ export default function CorreoScreen() {
   const [filtroTipo, setFiltroTipo] = useState("Todos");
   const [busqueda, setBusqueda] = useState("");
 
+  // AutoCompletado correos
+  const [correosDelSistema, setCorreosDelSistema] = useState([]);
+  const [sugPara, setSugPara] = useState([]);
+  const [sugCC, setSugCC] = useState([]);
+  const blurTimeoutPara = useRef(null);
+  const blurTimeoutCC = useRef(null);
+
   // Carga inicial y al enfocar
   useFocusEffect(
     useCallback(() => {
       cargarHistorial();
     }, []),
   );
+
+  useEffect(() => {
+    Promise.all([api.get("/empleados"), api.get("/receptores")])
+      .then(([r1, r2]) => {
+        const todos = [
+          ...r1.data.map((e) => e.corEmp).filter(Boolean),
+          ...r2.data.map((r) => r.corRec).filter(Boolean),
+        ];
+        setCorreosDelSistema([...new Set(todos)]);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Helpers de autocomplete
+  const filtrarCorreos = (texto) => {
+    const term = texto.split(",").pop().trim().toLowerCase();
+    if (!term) return [];
+    return correosDelSistema
+      .filter((c) => c.toLowerCase().includes(term))
+      .slice(0, 6);
+  };
+
+  const elegirCorreo = (actual, elegido, setter, setSugs, blurTimeoutRef) => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    // Si el campo está vacío, solo asignamos el correo elegido
+    if (!actual.trim()) {
+      setter(elegido);
+      setSugs([]);
+      return;
+    }
+
+    // Separar por comas, limpiar espacios y filtrar vacíos
+    let partes = actual
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p !== "");
+
+    // Reemplazar la última parte por el correo elegido
+    if (partes.length > 0) {
+      partes[partes.length - 1] = elegido;
+    } else {
+      partes = [elegido];
+    }
+    let resultado = partes.join(", ");
+
+    setter(resultado);
+    setSugs([]);
+  };
 
   const cargarHistorial = async () => {
     setCargandoHistorial(true);
@@ -234,7 +291,6 @@ export default function CorreoScreen() {
         })),
       ]);
 
-      // Mapeo de rutas según tipo
       const endpointMap = {
         ENTREGA: `/actas/procesadas/ENTREGA/${item.id}`,
         RETIRO: `/actas/procesadas/RETIRO/${item.id}`,
@@ -263,12 +319,17 @@ export default function CorreoScreen() {
         <div style="margin-top:20px;page-break-inside:avoid;">
           <p style="font-weight:bold;font-size:11px;margin-bottom:8px;">Evidencias fotográficas:</p>
           <div style="display:flex;flex-wrap:wrap;gap:10px;">
-            ${imagenesUrls.map((url) => `<img src="${url}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`).join("")}
+            ${imagenesUrls
+              .map(
+                (url) =>
+                  `<img src="${url}" style="max-width:200px;max-height:200px;border-radius:4px;border:1px solid #ccc;"/>`,
+              )
+              .join("")}
           </div>
         </div>`;
       }
 
-      //RECEPCION
+      // RECEPCION
       if (tipoNorm === "RECEPCION") {
         const firmante = detalle?.firmante || {};
         const receptorData = detalle?.receptor || {};
@@ -297,7 +358,7 @@ export default function CorreoScreen() {
         return { html, nombre: `Acta de Recepción_${correlativo}.pdf` };
       }
 
-      //ENTREGA y RETIRO
+      // ENTREGA y RETIRO
       if (tipoNorm === "ENTREGA") {
         const itemsEquipos = (detalle?.items || []).map((eq) => ({
           ...eq,
@@ -359,7 +420,7 @@ export default function CorreoScreen() {
         return { html, nombre: `Acta de Retiro_${correlativo}.pdf` };
       }
 
-      //MEMORANDUM
+      // MEMORANDUM
       if (tipoNorm === "MEMORANDUM") {
         const fecha = detalle?.fecha
           ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
@@ -387,7 +448,7 @@ export default function CorreoScreen() {
         return { html, nombre: `Memorándum_${correlativo}.pdf` };
       }
 
-      //OFICIO
+      // OFICIO
       if (tipoNorm === "OFICIO") {
         let emisorNombre = "Ing. Marco Aguilera";
         let emisorCargo = "Jefe de Infotecnología";
@@ -414,17 +475,14 @@ export default function CorreoScreen() {
               day: "numeric",
             });
 
-        //Datos del destinatario
         const receptorNombre =
           detalle?.receptor?.nombre || detalle?.receptorNombre || "—";
         const receptorCargo =
           detalle?.receptor?.cargo || detalle?.receptorCargo || "";
         const receptorTratamiento = detalle?.receptorTratamiento || "Señor(a)";
-
         const apellido =
           receptorNombre !== "—" ? receptorNombre.split(" ").slice(-1)[0] : "";
 
-        //Párrafos del cuerpo
         const parrafosHTML = (detalle?.items || [])
           .map((item) => `<p class="parrafo">${item.desc_OfiDet}</p>`)
           .join("");
@@ -562,7 +620,7 @@ ${parrafosHTML}
 
         return { html: htmlContent, nombre: `Oficio_${correlativo}.pdf` };
       }
-      //PASE DE SALIDA
+      // PASE DE SALIDA
       if (tipoNorm === "PASE_SALIDA") {
         const html = generarHTMLPaseSalida({
           data: {
@@ -584,7 +642,7 @@ ${parrafosHTML}
         return { html, nombre: `Pase de Salida_${correlativo}.pdf` };
       }
 
-      //REPORTE
+      // REPORTE
       if (tipoNorm === "REPORTE") {
         const fecha = detalle?.fecha
           ? new Date(detalle.fecha).toLocaleDateString("es-HN", {
@@ -626,7 +684,7 @@ ${parrafosHTML}
     }
   };
 
-  //ENVIO DEL CORREO
+  // ENVIO DEL CORREO
   const enviarCorreo = async () => {
     if (!para.trim()) {
       showAlert({
@@ -716,48 +774,164 @@ ${parrafosHTML}
             { backgroundColor: surfaceBg, borderColor: borderCol },
           ]}
         >
-          {[
-            {
-              label: "Para: *",
-              value: para,
-              onChange: setPara,
-              placeholder: "correo@ejemplo.com",
-              keyboard: "email-address",
-            },
-            {
-              label: "CC:",
-              value: cc,
-              onChange: setCc,
-              placeholder: "copia@ejemplo.com",
-              keyboard: "email-address",
-            },
-            {
-              label: "Asunto:",
-              value: asunto,
-              onChange: setAsunto,
-              placeholder: "Asunto del correo...",
-            },
-          ].map(({ label, value, onChange, placeholder, keyboard }) => (
-            <View key={label}>
-              <Text style={[styles.label, { color: subColor }]}>{label}</Text>
-              <TextInput
+          {/* Para */}
+          <View style={{ position: "relative", zIndex: 2 }}>
+            <Text style={[styles.label, { color: subColor }]}>Para: *</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBg,
+                  borderColor: inputBorder,
+                  color: textColor,
+                },
+              ]}
+              value={para}
+              onChangeText={(v) => {
+                setPara(v);
+                setSugPara(filtrarCorreos(v));
+              }}
+              onBlur={() => {
+                blurTimeoutPara.current = setTimeout(() => setSugPara([]), 200);
+              }}
+              placeholder="correo@ejemplo.com"
+              placeholderTextColor={subColor}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {sugPara.length > 0 && (
+              <View
                 style={[
-                  styles.input,
-                  {
-                    backgroundColor: inputBg,
-                    borderColor: inputBorder,
-                    color: textColor,
+                  acStyles.dropdown,
+                  { backgroundColor: surfaceBg, borderColor: borderCol },
+                  Platform.OS === "web" && {
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
                   },
                 ]}
-                value={value}
-                onChangeText={onChange}
-                placeholder={placeholder}
-                placeholderTextColor={subColor}
-                keyboardType={keyboard || "default"}
-                autoCapitalize="none"
-              />
-            </View>
-          ))}
+              >
+                {sugPara.map((email) => (
+                  <TouchableOpacity
+                    key={email}
+                    style={[acStyles.item, { borderBottomColor: borderCol }]}
+                    onPress={() =>
+                      elegirCorreo(
+                        para,
+                        email,
+                        setPara,
+                        setSugPara,
+                        blurTimeoutPara,
+                      )
+                    }
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <MaterialCommunityIcons
+                      name="email-outline"
+                      size={13}
+                      color={subColor}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[acStyles.itemText, { color: textColor }]}
+                      numberOfLines={1}
+                    >
+                      {email}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* CC */}
+          <View style={{ position: "relative", zIndex: 1 }}>
+            <Text style={[styles.label, { color: subColor }]}>CC:</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBg,
+                  borderColor: inputBorder,
+                  color: textColor,
+                },
+              ]}
+              value={cc}
+              onChangeText={(v) => {
+                setCc(v);
+                setSugCC(filtrarCorreos(v));
+              }}
+              onBlur={() => {
+                blurTimeoutCC.current = setTimeout(() => setSugCC([]), 200);
+              }}
+              placeholder="copia@ejemplo.com"
+              placeholderTextColor={subColor}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            {sugCC.length > 0 && (
+              <View
+                style={[
+                  acStyles.dropdown,
+                  { backgroundColor: surfaceBg, borderColor: borderCol },
+                  Platform.OS === "web" && {
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000,
+                  },
+                ]}
+              >
+                {sugCC.map((email) => (
+                  <TouchableOpacity
+                    key={email}
+                    style={[acStyles.item, { borderBottomColor: borderCol }]}
+                    onPress={() =>
+                      elegirCorreo(cc, email, setCc, setSugCC, blurTimeoutCC)
+                    }
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <MaterialCommunityIcons
+                      name="email-outline"
+                      size={13}
+                      color={subColor}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[acStyles.itemText, { color: textColor }]}
+                      numberOfLines={1}
+                    >
+                      {email}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Asunto */}
+          <View>
+            <Text style={[styles.label, { color: subColor }]}>Asunto:</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: inputBg,
+                  borderColor: inputBorder,
+                  color: textColor,
+                },
+              ]}
+              value={asunto}
+              onChangeText={setAsunto}
+              placeholder="Asunto del correo..."
+              placeholderTextColor={subColor}
+            />
+          </View>
+
+          {/* Mensaje */}
           <Text style={[styles.label, { color: subColor }]}>Mensaje:</Text>
           <TextInput
             style={[
@@ -863,6 +1037,7 @@ ${parrafosHTML}
           })}
         </ScrollView>
 
+        {/* Lista de documentos */}
         <View style={[styles.listaContainer, { borderColor: borderCol }]}>
           {cargandoHistorial ? (
             <ActivityIndicator color={highlightCol} style={{ marginTop: 12 }} />
@@ -880,10 +1055,8 @@ ${parrafosHTML}
               </Text>
             </View>
           ) : (
-            <FlatList
-              data={historialFiltrado}
-              keyExtractor={(item) => `${item.id}-${item.tipo}`}
-              renderItem={({ item }) => {
+            <ScrollView style={{ maxHeight: 300 }}>
+              {historialFiltrado.map((item) => {
                 const config = TIPOS_CONFIG[item.tipo] || {
                   nombre: item.tipo,
                   icono: "file-document-outline",
@@ -892,6 +1065,7 @@ ${parrafosHTML}
                 const seleccionado = estaSeleccionado(item);
                 return (
                   <TouchableOpacity
+                    key={`${item.id}-${item.tipo}`}
                     style={[
                       styles.actaRow,
                       {
@@ -961,10 +1135,8 @@ ${parrafosHTML}
                     />
                   </TouchableOpacity>
                 );
-              }}
-              showsVerticalScrollIndicator={true}
-              contentContainerStyle={{ paddingBottom: 8 }}
-            />
+              })}
+            </ScrollView>
           )}
         </View>
 
@@ -1052,7 +1224,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "700" },
 
   listaContainer: {
-    maxHeight: 300,
     borderWidth: 1,
     borderRadius: 10,
     marginTop: 8,
@@ -1143,4 +1314,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sendBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+});
+
+// ESTILOS PARA AUTOCOMPLETAR CORREOS
+const acStyles = StyleSheet.create({
+  dropdown: {
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 2,
+    overflow: "hidden",
+    zIndex: 999,
+    ...(Platform.OS === "web"
+      ? { position: "absolute", top: "100%", left: 0, right: 0, zIndex: 999 }
+      : {}),
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  itemText: { fontSize: 13, flex: 1 },
 });

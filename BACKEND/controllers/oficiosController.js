@@ -2,7 +2,7 @@ const db = require('../config/db');
 
 exports.crearOficio = async (req, res) => {
     const { idEmpleados, idReceptores, asunto_OFIEnc, items } = req.body;
-    const idUsuarios = req.usuario.idUsuarios; // ← del token, igual que los demás
+    const idUsuarios = req.usuario.idUsuarios; 
     const connection = await db.getConnection();
 
     try {
@@ -18,7 +18,6 @@ exports.crearOficio = async (req, res) => {
         let cargoReceptor  = 'S/C';
 
         if (idEmpleados) {
-            // ← JOIN con oficina, igual que actasController
             const [empData] = await connection.query(
                 `SELECT e.nomEmp, o.cargoOfi
                  FROM empleados e

@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import {
   View,
   Text,
@@ -12,20 +18,18 @@ import {
   useWindowDimensions,
   Platform,
   ScrollView,
+  FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Picker } from "@react-native-picker/picker";
 import { useTheme } from "../hooks/themeContext";
-import { Colors } from "../constants/theme";
-
 import Header from "../components/header";
 import Navbar from "../components/navBar";
 import Footer from "../components/footer";
-import CustomScrollView from "../components/ScrollView";
 import api from "../services/api";
 
-//Paletas de colores por tema
+// ── Paleta ──
 const P = {
   dark: {
     bg: "#121212",
@@ -47,6 +51,7 @@ const P = {
     searchBg: "#1E1E1E",
     modalBg: "#1E1E1E",
     switchTrackOff: "#444444",
+    pageBg: "#1a2744",
   },
   light: {
     bg: "#F4F6F9",
@@ -68,8 +73,11 @@ const P = {
     searchBg: "#FFFFFF",
     modalBg: "#FFFFFF",
     switchTrackOff: "#CBD5E1",
+    pageBg: "#dbeafe",
   },
 };
+
+const ITEMS_PER_PAGE = 15; // registros por página
 
 const ThemedInput = ({
   value,
@@ -125,20 +133,174 @@ const ThemedPicker = ({ selectedValue, onValueChange, children, colors }) => (
   </View>
 );
 
+//COMPONENTE DE PAGINACIÓN
+function Paginacion({
+  paginaActual,
+  totalPaginas,
+  onAnterior,
+  onSiguiente,
+  onIrA,
+  c,
+}) {
+  if (totalPaginas <= 1) return null;
+
+  // Genera los números de página visibles (máx 5 botones)
+  const generarPaginas = () => {
+    const paginas = [];
+    const rango = 2;
+    let inicio = Math.max(1, paginaActual - rango);
+    let fin = Math.min(totalPaginas, paginaActual + rango);
+
+    if (paginaActual <= rango + 1) fin = Math.min(totalPaginas, 5);
+    if (paginaActual >= totalPaginas - rango)
+      inicio = Math.max(1, totalPaginas - 4);
+
+    if (inicio > 1) {
+      paginas.push(1);
+      if (inicio > 2) paginas.push("...");
+    }
+    for (let i = inicio; i <= fin; i++) paginas.push(i);
+    if (fin < totalPaginas) {
+      if (fin < totalPaginas - 1) paginas.push("...");
+      paginas.push(totalPaginas);
+    }
+    return paginas;
+  };
+
+  return (
+    <View style={pg.container}>
+      {/* Botón anterior */}
+      <TouchableOpacity
+        onPress={onAnterior}
+        disabled={paginaActual === 1}
+        style={[
+          pg.navBtn,
+          { backgroundColor: c.surface, borderColor: c.border },
+          paginaActual === 1 && { opacity: 0.35 },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="chevron-left"
+          size={20}
+          color={c.textMuted}
+        />
+      </TouchableOpacity>
+
+      {/* Números */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={pg.numerosWrap}
+      >
+        {generarPaginas().map((p, i) =>
+          p === "..." ? (
+            <Text key={`dots-${i}`} style={[pg.dots, { color: c.textMuted }]}>
+              …
+            </Text>
+          ) : (
+            <TouchableOpacity
+              key={p}
+              onPress={() => onIrA(p)}
+              style={[
+                pg.numBtn,
+                {
+                  backgroundColor: paginaActual === p ? c.accent : c.surface,
+                  borderColor: paginaActual === p ? c.accent : c.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  pg.numText,
+                  { color: paginaActual === p ? "#fff" : c.textMuted },
+                ]}
+              >
+                {p}
+              </Text>
+            </TouchableOpacity>
+          ),
+        )}
+      </ScrollView>
+
+      {/* Botón siguiente */}
+      <TouchableOpacity
+        onPress={onSiguiente}
+        disabled={paginaActual === totalPaginas}
+        style={[
+          pg.navBtn,
+          { backgroundColor: c.surface, borderColor: c.border },
+          paginaActual === totalPaginas && { opacity: 0.35 },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={20}
+          color={c.textMuted}
+        />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const pg = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 20,
+    marginBottom: 8,
+    gap: 6,
+  },
+  navBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  numerosWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 4,
+  },
+  numBtn: {
+    minWidth: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  numText: { fontSize: 13, fontWeight: "700" },
+  dots: { fontSize: 14, paddingHorizontal: 4 },
+});
+
+// PÁGINA PRINCIPAL
 export default function EmpleadosReceptoresScreen() {
   const { theme } = useTheme();
   const c = P[theme] ?? P.light;
   const { width, height } = useWindowDimensions();
   const isSmall = width < 400;
 
+  //ESTADO
   const [tipoActivo, setTipoActivo] = useState("empleados");
   const [empleados, setEmpleados] = useState([]);
   const [receptores, setReceptores] = useState([]);
   const [oficinasLista, setOficinasLista] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("activos");
   const [modalVisible, setModalVisible] = useState(false);
+  const [editando, setEditando] = useState(false);
 
+  //PAGINACIÓN
+  const [paginaEmp, setPaginaEmp] = useState(1);
+  const [paginaRec, setPaginaRec] = useState(1);
+
+  //FORMULARIO EMPLEADO
   const [empNom, setEmpNom] = useState("");
   const [empCorreo, setEmpCorreo] = useState("");
   const [empDni, setEmpDni] = useState("");
@@ -146,34 +308,65 @@ export default function EmpleadosReceptoresScreen() {
   const [empUnidad, setEmpUnidad] = useState("");
   const [empCargoId, setEmpCargoId] = useState("");
 
+  //FORMULARIO RECEPTOR
   const [recNom, setRecNom] = useState("");
   const [recCorreo, setRecCorreo] = useState("");
   const [recEmpresa, setRecEmpresa] = useState("");
   const [recCargo, setRecCargo] = useState("");
 
+  //OFICINA/UNIDAD/CARGO NUEVOS
   const [mostrarNuevaOficina, setMostrarNuevaOficina] = useState(false);
   const [nuevaOfNom, setNuevaOfNom] = useState("");
   const [nuevaOfUnidad, setNuevaOfUnidad] = useState("");
   const [nuevaOfCargo, setNuevaOfCargo] = useState("");
-
   const [mostrarNuevaUnidad, setMostrarNuevaUnidad] = useState(false);
   const [nuevaUnidad, setNuevaUnidad] = useState("");
   const [nuevaUnidadCargo, setNuevaUnidadCargo] = useState("");
-
   const [mostrarNuevoCargo, setMostrarNuevoCargo] = useState(false);
   const [nuevoCargo, setNuevoCargo] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [errorCorreo, setErrorCorreo] = useState("");
+
+  //DEBOUNCE BÚSQUEDA
+  const searchTimer = useRef(null);
+  const [busquedaDebounced, setBusquedaDebounced] = useState("");
+
+  //Editar empleado y receptor
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [empleadoEditando, setEmpleadoEditando] = useState(null);
+  const [receptorEditando, setReceptorEditando] = useState(null);
+
+  const onBusquedaChange = (txt) => {
+    setBusqueda(txt);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setBusquedaDebounced(txt);
+      setPaginaEmp(1);
+      setPaginaRec(1);
+    }, 300);
+  };
 
   useEffect(() => {
     cargarDatos();
   }, []);
+
   useEffect(() => {
-    setEmpUnidad("");
-    setEmpCargoId("");
+    if (!editando) {
+      setEmpUnidad("");
+      setEmpCargoId("");
+    }
   }, [empOficinaId]);
+
   useEffect(() => {
-    setEmpCargoId("");
+    if (!editando) {
+      setEmpCargoId("");
+    }
   }, [empUnidad]);
+
+  // Resetear página al cambiar tab o filtro
+  useEffect(() => {
+    setPaginaEmp(1);
+    setPaginaRec(1);
+  }, [tipoActivo, filtroEstado]);
 
   const cargarDatos = async () => {
     try {
@@ -184,10 +377,16 @@ export default function EmpleadosReceptoresScreen() {
         api.get("/catalogos/oficinas"),
       ]);
       setEmpleados(
-        resEmp.data.map((e) => ({ ...e, estado: e.estado || "Activo" })),
+        resEmp.data.map((e) => ({
+          ...e,
+          estado: e.estEmp || e.estado || "Activo",
+        })),
       );
       setReceptores(
-        resRec.data.map((r) => ({ ...r, estado: r.estRec || "Activo" })),
+        resRec.data.map((r) => ({
+          ...r,
+          estado: r.estRec || r.estado || "Activo",
+        })),
       );
       setOficinasLista(resOfi.data);
     } catch {
@@ -197,53 +396,105 @@ export default function EmpleadosReceptoresScreen() {
     }
   };
 
-  const guardarRegistro = async () => {
+  //FILTRADO Y PAGINACIÓN
+  const datosFiltradosTodos = useMemo(() => {
+    const lista = tipoActivo === "empleados" ? empleados : receptores;
+    const txt = busquedaDebounced.toLowerCase();
+    return lista
+      .filter((item) => {
+        if (!txt) return true;
+        return (
+          (item.nomEmp || item.nomRec || "").toLowerCase().includes(txt) ||
+          (item.corEmp || item.corRec || "").toLowerCase().includes(txt) ||
+          (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(txt) ||
+          (item.nomOficina || "").toLowerCase().includes(txt)
+        );
+      })
+      .filter((item) => {
+        if (filtroEstado === "activos") return item.estado === "Activo";
+        if (filtroEstado === "inactivos") return item.estado === "Inactivo";
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.estado === "Activo" && b.estado === "Inactivo") return -1;
+        if (a.estado === "Inactivo" && b.estado === "Activo") return 1;
+        const na = (a.nomEmp || a.nomRec || "").toLowerCase();
+        const nb = (b.nomEmp || b.nomRec || "").toLowerCase();
+        return na.localeCompare(nb);
+      });
+  }, [tipoActivo, empleados, receptores, busquedaDebounced, filtroEstado]);
+
+  const paginaActual = tipoActivo === "empleados" ? paginaEmp : paginaRec;
+  const setPagina = tipoActivo === "empleados" ? setPaginaEmp : setPaginaRec;
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(datosFiltradosTodos.length / ITEMS_PER_PAGE),
+  );
+
+  const datosPagina = useMemo(() => {
+    const inicio = (paginaActual - 1) * ITEMS_PER_PAGE;
+    return datosFiltradosTodos.slice(inicio, inicio + ITEMS_PER_PAGE);
+  }, [datosFiltradosTodos, paginaActual]);
+
+  // HELPERS OFICINAS
+  const oficinasUnicas = useMemo(
+    () => [...new Map(oficinasLista.map((o) => [o.nomOficina, o])).values()],
+    [oficinasLista],
+  );
+
+  const unidadesDeLaOficina = useMemo(
+    () =>
+      empOficinaId
+        ? [
+            ...new Set(
+              oficinasLista
+                .filter((o) => o.nomOficina === empOficinaId)
+                .map((o) => o.unidad)
+                .filter(Boolean),
+            ),
+          ]
+        : [],
+    [empOficinaId, oficinasLista],
+  );
+
+  const cargosDeLaUnidad = useMemo(
+    () =>
+      empOficinaId
+        ? oficinasLista.filter((o) => {
+            if (!empUnidad || empUnidad === "N/A") {
+              return o.nomOficina === empOficinaId;
+            }
+            return o.nomOficina === empOficinaId && o.unidad === empUnidad;
+          })
+        : [],
+    [empOficinaId, empUnidad, oficinasLista],
+  );
+
+  // ACCIONES
+  const toggleEstado = useCallback(async (id, tipo, estadoActual) => {
+    const nuevoEstado = estadoActual === "Activo" ? "Inactivo" : "Activo";
+    const endpoint =
+      tipo === "empleado"
+        ? `/empleados/${id}/estado`
+        : `/receptores/${id}/estado`;
     try {
-      if (tipoActivo === "empleados") {
-        if (!empNom || !empCorreo || !empOficinaId) {
-          Alert.alert("Atención", "Nombre, correo y oficina son obligatorios.");
-          return;
-        }
-        let idOficinaFinal;
-        if (empCargoId) {
-          idOficinaFinal = parseInt(empCargoId);
-        } else {
-          const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
-          if (!ofi) {
-            Alert.alert("Error", "No se encontró la oficina.");
-            return;
-          }
-          idOficinaFinal = ofi.idOficina;
-        }
-        await api.post("/empleados", {
-          nomEmp: empNom,
-          corEmp: empCorreo,
-          idOficina: idOficinaFinal,
-          dniEmp: empDni || null,
-        });
-        Alert.alert("Éxito", "Empleado creado correctamente.");
-      } else {
-        if (!recNom || !recCorreo || !recEmpresa || !recCargo) {
-          Alert.alert("Atención", "Todos los campos son obligatorios.");
-          return;
-        }
-        await api.post("/receptores", {
-          nomRec: recNom,
-          corRec: recCorreo,
-          emprRec: recEmpresa,
-          cargoRec: recCargo,
-        });
-        Alert.alert("Éxito", "Receptor creado correctamente.");
-      }
-      limpiarFormularios();
-      setModalVisible(false);
-      cargarDatos();
-    } catch (error) {
-      if (error.response?.status === 409)
-        Alert.alert("Error", "Este correo ya está registrado.");
-      else Alert.alert("Error", "No se pudo crear el registro.");
+      await api.put(endpoint, { estado: nuevoEstado });
+      if (tipo === "empleado")
+        setEmpleados((prev) =>
+          prev.map((e) =>
+            e.idEmpleados === id ? { ...e, estado: nuevoEstado } : e,
+          ),
+        );
+      else
+        setReceptores((prev) =>
+          prev.map((r) =>
+            r.idReceptores === id ? { ...r, estado: nuevoEstado } : r,
+          ),
+        );
+    } catch {
+      Alert.alert("Error", "No se pudo cambiar el estado.");
     }
-  };
+  }, []);
 
   const limpiarFormularios = () => {
     setEmpNom("");
@@ -265,37 +516,100 @@ export default function EmpleadosReceptoresScreen() {
     setNuevaUnidadCargo("");
     setMostrarNuevoCargo(false);
     setNuevoCargo("");
+    setErrorCorreo("");
+    setReceptorEditando(null);
   };
 
-  const toggleEstado = async (id, tipo, estadoActual) => {
-    const nuevoEstado = estadoActual === "Activo" ? "Inactivo" : "Activo";
-    const endpoint =
-      tipo === "empleado"
-        ? `/empleados/${id}/estado`
-        : `/receptores/${id}/estado`;
+  const guardarRegistro = async () => {
     try {
-      console.log("Enviando:", { id, tipo, estado: nuevoEstado });
-      await api.put(endpoint, { estado: nuevoEstado });
-      if (tipo === "empleado")
-        setEmpleados(
-          empleados.map((e) =>
-            e.idEmpleados === id ? { ...e, estado: nuevoEstado } : e,
-          ),
+      if (tipoActivo === "empleados") {
+        // Validaciones comunes
+        if (!empNom || !empOficinaId) {
+          Alert.alert("Atención", "Nombre y oficina son obligatorios.");
+          return;
+        }
+        const idOficinaFinal = empCargoId
+          ? parseInt(empCargoId)
+          : (() => {
+              const ofi = oficinasLista.find(
+                (o) => o.nomOficina === empOficinaId,
+              );
+              return ofi?.idOficina;
+            })();
+        if (!idOficinaFinal) {
+          Alert.alert("Error", "No se encontró la oficina.");
+          return;
+        }
+        const correoParaEnviar =
+          empCorreo && empCorreo.trim() !== "" ? empCorreo.trim() : null;
+
+        if (editando && empleadoEditando) {
+          // Actualizar empleado existente
+          await api.put(`/empleados/${empleadoEditando.idEmpleados}`, {
+            nomEmp: empNom,
+            corEmp: correoParaEnviar,
+            idOficina: idOficinaFinal,
+            dniEmp: empDni || null,
+          });
+          Alert.alert("Éxito", "Empleado actualizado correctamente.");
+        } else {
+          // Crear nuevo empleado
+          await api.post("/empleados", {
+            nomEmp: empNom,
+            corEmp: correoParaEnviar,
+            idOficina: idOficinaFinal,
+            dniEmp: empDni || null,
+          });
+          Alert.alert("Éxito", "Empleado creado correctamente.");
+        }
+      } else {
+        if (!recNom || !recCorreo || !recEmpresa || !recCargo) {
+          Alert.alert("Atención", "Todos los campos son obligatorios.");
+          return;
+        }
+
+        if (editando && receptorEditando) {
+          // EDITAR receptor
+          await api.put(`/receptores/${receptorEditando.idReceptores}`, {
+            nomRec: recNom,
+            corRec: recCorreo,
+            emprRec: recEmpresa,
+            cargoRec: recCargo,
+          });
+
+          Alert.alert("Éxito", "Receptor actualizado correctamente.");
+        } else {
+          // CREAR receptor
+          await api.post("/receptores", {
+            nomRec: recNom,
+            corRec: recCorreo,
+            emprRec: recEmpresa,
+            cargoRec: recCargo,
+          });
+
+          Alert.alert("Éxito", "Receptor creado correctamente.");
+        }
+      }
+      limpiarFormularios();
+      setModalVisible(false);
+      setEditando(false);
+      setEmpleadoEditando(null);
+      setReceptorEditando(null);
+      cargarDatos();
+    } catch (error) {
+      if (error.response?.status === 409) {
+        setErrorCorreo("Este correo ya está registrado. Usa otro correo.");
+      } else {
+        Alert.alert(
+          "Error",
+          "No se pudo guardar el registro. Intenta de nuevo.",
         );
-      else
-        setReceptores(
-          receptores.map((r) =>
-            r.idReceptores === id ? { ...r, estado: nuevoEstado } : r,
-          ),
-        );
-    } catch {
-      Alert.alert("Error", "No se pudo cambiar el estado.");
+      }
     }
   };
-
   const crearNuevaOficina = async () => {
-    if (!nuevaOfNom || !nuevaOfUnidad || !nuevaOfCargo) {
-      Alert.alert("Atención", "Todos los campos son obligatorios.");
+    if (!nuevaOfNom || !nuevaOfCargo) {
+      Alert.alert("Atención", "Nombre y cargo son obligatorios.");
       return;
     }
     try {
@@ -317,8 +631,8 @@ export default function EmpleadosReceptoresScreen() {
   };
 
   const crearNuevaUnidad = async () => {
-    if (!nuevaUnidad || !nuevaUnidadCargo) {
-      Alert.alert("Atención", "Unidad y cargo son obligatorios.");
+    if (!nuevaUnidad) {
+      Alert.alert("Atención", "El nombre es obligatorio.");
       return;
     }
     const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
@@ -327,7 +641,7 @@ export default function EmpleadosReceptoresScreen() {
       const res = await api.post("/catalogos/oficinas", {
         nomOficina: ofi.nomOficina,
         unidad: nuevaUnidad,
-        cargoOfi: nuevaUnidadCargo,
+        cargoOfi: nuevaUnidadCargo || null,
       });
       setOficinasLista((prev) => [...prev, res.data]);
       setEmpUnidad(res.data.unidad);
@@ -342,7 +656,7 @@ export default function EmpleadosReceptoresScreen() {
 
   const crearNuevoCargo = async () => {
     if (!nuevoCargo) {
-      Alert.alert("Atención", "El nombre del cargo es obligatorio.");
+      Alert.alert("Atención", "El nombre es obligatorio.");
       return;
     }
     const ofi = oficinasLista.find((o) => o.nomOficina === empOficinaId);
@@ -363,54 +677,193 @@ export default function EmpleadosReceptoresScreen() {
     }
   };
 
-  const getInicial = (n) => (n ? n.charAt(0).toUpperCase() : "?");
-  const oficinasUnicas = [
-    ...new Map(oficinasLista.map((o) => [o.nomOficina, o])).values(),
-  ];
-  const unidadesDeLaOficina = empOficinaId
-    ? [
-        ...new Set(
-          oficinasLista
-            .filter((o) => o.nomOficina === empOficinaId)
-            .map((o) => o.unidad)
-            .filter(Boolean),
-        ),
-      ]
-    : [];
-  const cargosDeLaUnidad =
-    empOficinaId && empUnidad
-      ? oficinasLista.filter(
-          (o) => o.nomOficina === empOficinaId && o.unidad === empUnidad,
-        )
-      : [];
+  const abrirEdicion = (item) => {
+    setEditando(true);
+    setErrorCorreo("");
 
-  const datosFiltrados = (tipoActivo === "empleados" ? empleados : receptores)
-    .filter((item) => {
-      const txt = busqueda.toLowerCase();
-      return (
-        (item.nomEmp || item.nomRec || "").toLowerCase().includes(txt) ||
-        (item.corEmp || item.corRec || "").toLowerCase().includes(txt) ||
-        (item.cargoEmp || item.cargoRec || "").toLowerCase().includes(txt) ||
-        (item.nomOficina || "").toLowerCase().includes(txt)
+    //EMPLEADO
+    if (item.idEmpleados) {
+      setEmpleadoEditando(item);
+
+      setEmpNom(item.nomEmp || "");
+      setEmpCorreo(item.corEmp || "");
+      setEmpDni(item.dniEmp || "");
+      setEmpOficinaId(item.nomOficina || "");
+      setEmpUnidad(item.unidad || "");
+
+      const cargoRow = oficinasLista.find(
+        (o) => o.nomOficina === item.nomOficina && o.cargoOfi === item.cargoEmp,
       );
-    })
-    .filter((item) => {
-      if (filtroEstado === "activos") return item.estado === "Activo";
-      if (filtroEstado === "inactivos") return item.estado === "Inactivo";
-      return true;
-    })
-    .sort((a, b) => {
-      // Activos primero, inactivos después
-      if (a.estado === "Activo" && b.estado === "Inactivo") return -1;
-      if (a.estado === "Inactivo" && b.estado === "Activo") return 1;
-      return 0;
-    });
+
+      setEmpCargoId(cargoRow ? String(cargoRow.idOficina) : "");
+
+      setRecNom("");
+      setRecCorreo("");
+      setRecEmpresa("");
+      setRecCargo("");
+    }
+
+    //RECEPTOR
+    if (item.idReceptores) {
+      setReceptorEditando(item);
+
+      setRecNom(item.nomRec || "");
+      setRecCorreo(item.corRec || "");
+      setRecEmpresa(item.emprRec || "");
+      setRecCargo(item.cargoRec || "");
+    }
+
+    setModalVisible(true);
+  };
+
+  const renderCard = useCallback(
+    ({ item }) => {
+      const id = item.idEmpleados || item.idReceptores;
+      const nombre = item.nomEmp || item.nomRec;
+      const correo = item.corEmp || item.corRec;
+      const cargo = item.cargoEmp || item.cargoRec || item.cargoOfi;
+      const empresa = item.emprRec || "Interno";
+      const isActivo = item.estado === "Activo";
+      const inicial = nombre ? nombre.charAt(0).toUpperCase() : "?";
+
+      return (
+        <View
+          style={[
+            st.userCard,
+            {
+              backgroundColor: isActivo ? c.surface : c.cardBlocked,
+              borderColor: c.border,
+            },
+            !isActivo && { opacity: 0.65 },
+          ]}
+        >
+          <View
+            style={[
+              st.avatarContainer,
+              {
+                backgroundColor: c.avatarBg,
+                borderColor: isActivo ? c.avatarBorder : c.border2,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                st.avatarText,
+                { color: c.accent },
+                !isActivo && { color: c.textMuted },
+              ]}
+            >
+              {inicial}
+            </Text>
+          </View>
+
+          <View style={{ flex: 1, justifyContent: "center", minWidth: 0 }}>
+            <View style={st.nameRow}>
+              <Text
+                style={[
+                  st.userName,
+                  { color: c.text },
+                  !isActivo && { color: c.textMuted },
+                ]}
+                numberOfLines={1}
+              >
+                {nombre}
+              </Text>
+              {!isActivo && (
+                <View style={st.badgeInactivo}>
+                  <Text style={st.badgeInactivoText}>Inactivo</Text>
+                </View>
+              )}
+            </View>
+            <View style={st.badgeContainer}>
+              {cargo ? (
+                <View style={[st.roleBadge, { backgroundColor: c.surface2 }]}>
+                  <Text
+                    style={[st.roleBadgeText, { color: c.textSub }]}
+                    numberOfLines={1}
+                  >
+                    {cargo}
+                  </Text>
+                </View>
+              ) : null}
+              {tipoActivo === "receptores" && (
+                <View style={[st.roleBadge, { backgroundColor: c.surface3 }]}>
+                  <Text
+                    style={[st.roleBadgeText, { color: c.accent }]}
+                    numberOfLines={1}
+                  >
+                    {empresa}
+                  </Text>
+                </View>
+              )}
+              {tipoActivo === "empleados" && item.nomOficina && (
+                <View style={[st.roleBadge, { backgroundColor: "#78350f22" }]}>
+                  <Text
+                    style={[st.roleBadgeText, { color: "#D97706" }]}
+                    numberOfLines={1}
+                  >
+                    {item.nomOficina}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <MaterialCommunityIcons
+                name="email-outline"
+                size={13}
+                color={c.textMuted}
+              />
+              <Text
+                style={[st.emailText, { color: c.textMuted }]}
+                numberOfLines={1}
+              >
+                {correo}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ alignItems: "center", marginLeft: 8, minWidth: 56 }}>
+            <Text style={[st.switchLabel, { color: c.textMuted }]}>
+              {isActivo ? "Activo" : "Inactivo"}
+            </Text>
+            <Switch
+              value={isActivo}
+              onValueChange={() =>
+                toggleEstado(
+                  id,
+                  tipoActivo === "empleados" ? "empleado" : "receptor",
+                  item.estado,
+                )
+              }
+              trackColor={{ false: c.switchTrackOff, true: "#1E3A5F" }}
+              thumbColor={isActivo ? "#3b82f6" : c.textMuted}
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => abrirEdicion(item)}
+            style={{ marginLeft: 8, padding: 4 }}
+          >
+            <MaterialCommunityIcons name="pencil" size={20} color={c.accent} />
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [c, tipoActivo, toggleEstado],
+  );
+
+  const getInicial = (n) => (n ? n.charAt(0).toUpperCase() : "?");
+
+  // TOTAL MOSTRADOS Y ACTIVOS
+  const totalMostrados = datosFiltradosTodos.length;
+  const totalActivos = (
+    tipoActivo === "empleados" ? empleados : receptores
+  ).filter((i) => i.estado === "Activo").length;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
       <Header />
       <Navbar />
-      <CustomScrollView
+      <ScrollView
         contentContainerStyle={{
           padding: 16,
           alignItems: "center",
@@ -418,31 +871,33 @@ export default function EmpleadosReceptoresScreen() {
         }}
       >
         <View style={{ width: "100%", maxWidth: 900 }}>
-          {/* Header row */}
-          <View style={[styles.headerRow, isSmall && styles.headerRowSmall]}>
+          {/* HEADER */}
+          <View style={[st.headerRow, isSmall && st.headerRowSmall]}>
             <View style={{ flexShrink: 1 }}>
               <Text
                 style={[
-                  styles.mainTitle,
+                  st.mainTitle,
                   { color: c.text },
                   isSmall && { fontSize: 20 },
                 ]}
               >
                 Directorio
               </Text>
-              <Text style={[styles.subTitle, { color: c.textMuted }]}>
-                Administra empleados y receptores
+              <Text style={[st.subTitle, { color: c.textMuted }]}>
+                {totalActivos} activos ·{" "}
+                {(tipoActivo === "empleados" ? empleados : receptores).length}{" "}
+                total
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.addBtn, isSmall && styles.addBtnSmall]}
+              style={[st.addBtn, isSmall && st.addBtnSmall]}
               onPress={() => {
                 limpiarFormularios();
                 setModalVisible(true);
               }}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-              <Text style={styles.addBtnText}>
+              <Text style={st.addBtnText}>
                 {tipoActivo === "empleados"
                   ? "Nuevo Empleado"
                   : "Nuevo Receptor"}
@@ -450,15 +905,12 @@ export default function EmpleadosReceptoresScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Tabs */}
-          <View style={[styles.tabContainer, { backgroundColor: c.surface }]}>
+          {/*TABS*/}
+          <View style={[st.tabContainer, { backgroundColor: c.surface }]}>
             {["empleados", "receptores"].map((tab) => (
               <TouchableOpacity
                 key={tab}
-                style={[
-                  styles.tabButton,
-                  tipoActivo === tab && styles.tabActive,
-                ]}
+                style={[st.tabButton, tipoActivo === tab && st.tabActive]}
                 onPress={() => setTipoActivo(tab)}
               >
                 <MaterialCommunityIcons
@@ -472,7 +924,7 @@ export default function EmpleadosReceptoresScreen() {
                 />
                 <Text
                   style={[
-                    styles.tabText,
+                    st.tabText,
                     { color: tipoActivo === tab ? "#fff" : c.tabInactive },
                     isSmall && { fontSize: 13 },
                   ]}
@@ -483,10 +935,10 @@ export default function EmpleadosReceptoresScreen() {
             ))}
           </View>
 
-          {/* Búsqueda */}
+          {/*BÚSQUEDA*/}
           <View
             style={[
-              styles.searchContainer,
+              st.searchContainer,
               { backgroundColor: c.searchBg, borderColor: c.border },
             ]}
           >
@@ -497,15 +949,18 @@ export default function EmpleadosReceptoresScreen() {
               style={{ marginRight: 8 }}
             />
             <TextInput
-              style={[styles.searchInput, { color: c.text }]}
+              style={[st.searchInput, { color: c.text }]}
               placeholder={`Buscar ${tipoActivo}...`}
               placeholderTextColor={c.textMuted}
               value={busqueda}
-              onChangeText={setBusqueda}
+              onChangeText={onBusquedaChange}
             />
             {busqueda.length > 0 && (
               <TouchableOpacity
-                onPress={() => setBusqueda("")}
+                onPress={() => {
+                  setBusqueda("");
+                  setBusquedaDebounced("");
+                }}
                 style={{ padding: 6 }}
               >
                 <MaterialCommunityIcons
@@ -517,48 +972,70 @@ export default function EmpleadosReceptoresScreen() {
             )}
           </View>
 
-          {/* Filtro por estado */}
-          <View style={[styles.filterContainer, { borderColor: c.border }]}>
-            {["todos", "activos", "inactivos"].map((tipo) => (
+          {/* FILTRO ESTADO*/}
+          <View style={[st.filterContainer, { borderColor: c.border }]}>
+            {[
+              { key: "todos", label: "Todos" },
+              { key: "activos", label: "Activos" },
+              { key: "inactivos", label: "Inactivos" },
+            ].map(({ key, label }) => (
               <TouchableOpacity
-                key={tipo}
+                key={key}
                 style={[
-                  styles.filterButton,
-                  filtroEstado === tipo && styles.filterButtonActive,
+                  st.filterButton,
+                  filtroEstado === key && st.filterButtonActive,
                   {
                     backgroundColor:
-                      filtroEstado === tipo ? c.accent : "transparent",
+                      filtroEstado === key ? c.accent : "transparent",
                   },
                 ]}
-                onPress={() => setFiltroEstado(tipo)}
+                onPress={() => setFiltroEstado(key)}
               >
                 <Text
                   style={[
-                    styles.filterButtonText,
-                    { color: filtroEstado === tipo ? "#fff" : c.textMuted },
+                    st.filterButtonText,
+                    { color: filtroEstado === key ? "#fff" : c.textMuted },
                   ]}
                 >
-                  {tipo === "todos"
-                    ? "Todos"
-                    : tipo === "activos"
-                      ? "Activos"
-                      : "Inactivos"}
+                  {label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Lista */}
+          {/*PÁGINA INFO*/}
+          {!cargando && totalMostrados > 0 && (
+            <View style={[st.pageInfo, { backgroundColor: c.pageBg }]}>
+              <MaterialCommunityIcons
+                name="format-list-numbered"
+                size={14}
+                color={c.accent}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[st.pageInfoText, { color: c.accent }]}>
+                Mostrando{" "}
+                {Math.min(
+                  (paginaActual - 1) * ITEMS_PER_PAGE + 1,
+                  totalMostrados,
+                )}
+                –{Math.min(paginaActual * ITEMS_PER_PAGE, totalMostrados)} de{" "}
+                {totalMostrados} resultados
+              </Text>
+            </View>
+          )}
+
+          {/* LISTA */}
           {cargando ? (
-            <ActivityIndicator
-              size="large"
-              color="#09528e"
-              style={{ marginTop: 50 }}
-            />
-          ) : datosFiltrados.length === 0 ? (
+            <View style={{ paddingVertical: 60, alignItems: "center" }}>
+              <ActivityIndicator size="large" color="#09528e" />
+              <Text style={[st.loadingText, { color: c.textMuted }]}>
+                Cargando directorio...
+              </Text>
+            </View>
+          ) : totalMostrados === 0 ? (
             <View
               style={[
-                styles.emptyState,
+                st.emptyState,
                 { backgroundColor: c.surface, borderColor: c.border },
               ]}
             >
@@ -567,208 +1044,64 @@ export default function EmpleadosReceptoresScreen() {
                 size={48}
                 color={c.textMuted}
               />
-              <Text style={[styles.emptyStateTitle, { color: c.text }]}>
+              <Text style={[st.emptyStateTitle, { color: c.text }]}>
                 Sin resultados
               </Text>
+              {busqueda.length > 0 && (
+                <Text
+                  style={[{ color: c.textMuted, fontSize: 13, marginTop: 4 }]}
+                >
+                  No hay coincidencias para "{busqueda}"
+                </Text>
+              )}
             </View>
           ) : (
-            <View style={{ gap: 12 }}>
-              {datosFiltrados.map((item) => {
-                const id = item.idEmpleados || item.idReceptores;
-                const nombre = item.nomEmp || item.nomRec;
-                const correo = item.corEmp || item.corRec;
-                const cargo = item.cargoEmp || item.cargoRec;
-                const empresa = item.emprRec || "Interno";
-                const isActivo = item.estado === "Activo";
-
-                return (
-                  <View
-                    key={id}
-                    style={[
-                      styles.userCard,
-                      {
-                        backgroundColor: isActivo ? c.surface : c.cardBlocked,
-                        borderColor: c.border,
-                      },
-                      !isActivo && { opacity: 0.65 },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.avatarContainer,
-                        {
-                          backgroundColor: c.avatarBg,
-                          borderColor: isActivo ? c.avatarBorder : c.border2,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.avatarText,
-                          { color: c.accent },
-                          !isActivo && { color: c.textMuted },
-                        ]}
-                      >
-                        {getInicial(nombre)}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={{ flex: 1, justifyContent: "center", minWidth: 0 }}
-                    >
-                      <View style={styles.nameRow}>
-                        <Text
-                          style={[
-                            styles.userName,
-                            { color: c.text },
-                            !isActivo && { color: c.textMuted },
-                          ]}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
-                          {nombre}
-                        </Text>
-                        {!isActivo && (
-                          <View style={styles.badgeInactivo}>
-                            <Text style={styles.badgeInactivoText}>
-                              Bloqueado
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      <View style={styles.badgeContainer}>
-                        {cargo ? (
-                          <View
-                            style={[
-                              styles.roleBadge,
-                              { backgroundColor: c.surface2 },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.roleBadgeText,
-                                { color: c.textSub },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {cargo}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {tipoActivo === "receptores" && (
-                          <View
-                            style={[
-                              styles.roleBadge,
-                              { backgroundColor: c.surface3 },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.roleBadgeText,
-                                { color: c.accent },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {empresa}
-                            </Text>
-                          </View>
-                        )}
-                        {tipoActivo === "empleados" && item.nomOficina && (
-                          <View
-                            style={[
-                              styles.roleBadge,
-                              { backgroundColor: "#78350f22" },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.roleBadgeText,
-                                { color: "#D97706" },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {item.nomOficina}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      <View
-                        style={{ flexDirection: "row", alignItems: "center" }}
-                      >
-                        <MaterialCommunityIcons
-                          name="email-outline"
-                          size={13}
-                          color={c.textMuted}
-                        />
-                        <Text
-                          style={[styles.emailText, { color: c.textMuted }]}
-                          numberOfLines={1}
-                        >
-                          {correo}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View
-                      style={{
-                        alignItems: "center",
-                        marginLeft: 8,
-                        minWidth: 56,
-                      }}
-                    >
-                      <Text
-                        style={[styles.switchLabel, { color: c.textMuted }]}
-                      >
-                        {isActivo ? "Activo" : "Inactivo"}
-                      </Text>
-                      <Switch
-                        value={isActivo}
-                        onValueChange={() =>
-                          toggleEstado(
-                            id,
-                            tipoActivo === "empleados"
-                              ? "empleado"
-                              : "receptor",
-                            item.estado,
-                          )
-                        }
-                        trackColor={{
-                          false: c.switchTrackOff,
-                          true: "#1E3A5F",
-                        }}
-                        thumbColor={isActivo ? "#3b82f6" : c.textMuted}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
+            <View style={{ gap: 10 }}>
+              {datosPagina.map((item) => renderCard({ item }))}
             </View>
+          )}
+
+          {/*PAGINACIÓN*/}
+          {!cargando && totalMostrados > 0 && (
+            <Paginacion
+              paginaActual={paginaActual}
+              totalPaginas={totalPaginas}
+              onAnterior={() => setPagina((p) => Math.max(1, p - 1))}
+              onSiguiente={() =>
+                setPagina((p) => Math.min(totalPaginas, p + 1))
+              }
+              onIrA={setPagina}
+              c={c}
+            />
+          )}
+
+          {/* Info total al final */}
+          {!cargando && totalMostrados > ITEMS_PER_PAGE && (
+            <Text style={[st.footerInfo, { color: c.textMuted }]}>
+              Página {paginaActual} de {totalPaginas} · {ITEMS_PER_PAGE}{" "}
+              registros por página
+            </Text>
           )}
         </View>
         <Footer />
-      </CustomScrollView>
+      </ScrollView>
 
-      {/*MODAL*/}
+      {/*MODAL */}
       <Modal visible={modalVisible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
+        <View style={st.modalOverlay}>
           <View
             style={[
-              styles.modalContent,
+              st.modalContent,
               {
                 backgroundColor: c.modalBg,
                 width: Math.min(width - 32, 500),
-                maxHeight: height * 0.88,
+                height: height * 0.88,
               },
             ]}
           >
-            <View style={styles.modalHeader}>
+            <View style={st.modalHeader}>
               <View
-                style={[
-                  styles.modalIconContainer,
-                  { backgroundColor: c.avatarBg },
-                ]}
+                style={[st.modalIconContainer, { backgroundColor: c.avatarBg }]}
               >
                 <MaterialCommunityIcons
                   name={
@@ -780,20 +1113,40 @@ export default function EmpleadosReceptoresScreen() {
                   color={c.accent}
                 />
               </View>
-              <Text style={[styles.modalTitle, { color: c.text }]}>
-                Crear {tipoActivo === "empleados" ? "Empleado" : "Receptor"}
+              <Text style={[st.modalTitle, { color: c.text }]}>
+                {editando
+                  ? "Editar Empleado"
+                  : tipoActivo === "empleados"
+                    ? "Nuevo Empleado"
+                    : "Nuevo Receptor"}
               </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setModalVisible(false);
+                  setEditando(false);
+                  setEmpleadoEditando(null);
+                  limpiarFormularios();
+                }}
+                style={{ padding: 4 }}
+              >
+                <MaterialCommunityIcons
+                  name="close"
+                  size={22}
+                  color={c.textMuted}
+                />
+              </TouchableOpacity>
             </View>
 
             <ScrollView
-              showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 30, flexGrow: 1 }}
+              style={{ flex: 1, width: "100%" }}
             >
               {tipoActivo === "empleados" ? (
                 <>
-                  {/* Nombre */}
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Nombre Completo
                     </Text>
                     <ThemedInput
@@ -803,11 +1156,8 @@ export default function EmpleadosReceptoresScreen() {
                       colors={c}
                     />
                   </View>
-                  {/* DNI */}
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
-                      DNI
-                    </Text>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>DNI</Text>
                     <ThemedInput
                       value={empDni}
                       onChangeText={setEmpDni}
@@ -816,25 +1166,53 @@ export default function EmpleadosReceptoresScreen() {
                       colors={c}
                     />
                   </View>
-                  {/* Correo */}
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Correo Electrónico
                     </Text>
                     <ThemedInput
                       value={empCorreo}
-                      onChangeText={setEmpCorreo}
+                      onChangeText={(v) => {
+                        setEmpCorreo(v);
+                        setErrorCorreo("");
+                      }}
                       placeholder="correo@ejemplo.com"
                       keyboardType="email-address"
                       autoCapitalize="none"
                       colors={c}
                     />
+                    {errorCorreo ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginTop: 6,
+                          gap: 5,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="alert-circle"
+                          size={14}
+                          color="#ef4444"
+                        />
+                        <Text
+                          style={{
+                            color: "#ef4444",
+                            fontSize: 12,
+                            fontWeight: "600",
+                            flex: 1,
+                          }}
+                        >
+                          {errorCorreo}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   {/* Oficina */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                      <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <View style={st.labelRow}>
+                      <Text style={[st.label, { color: c.textMuted }]}>
                         Oficina
                       </Text>
                       <TouchableOpacity
@@ -875,20 +1253,17 @@ export default function EmpleadosReceptoresScreen() {
                       ))}
                     </ThemedPicker>
                   </View>
-
                   {mostrarNuevaOficina && (
                     <View
                       style={[
-                        styles.inlineForm,
+                        st.inlineForm,
                         {
                           backgroundColor: c.surface3,
                           borderColor: c.avatarBorder,
                         },
                       ]}
                     >
-                      <Text
-                        style={[styles.inlineFormTitle, { color: c.accent }]}
-                      >
+                      <Text style={[st.inlineFormTitle, { color: c.accent }]}>
                         Nueva Oficina
                       </Text>
                       <ThemedInput
@@ -901,7 +1276,7 @@ export default function EmpleadosReceptoresScreen() {
                       <ThemedInput
                         value={nuevaOfUnidad}
                         onChangeText={setNuevaOfUnidad}
-                        placeholder="Unidad"
+                        placeholder="Unidad (opcional)"
                         colors={c}
                       />
                       <View style={{ height: 8 }} />
@@ -912,21 +1287,19 @@ export default function EmpleadosReceptoresScreen() {
                         colors={c}
                       />
                       <TouchableOpacity
-                        style={styles.inlineBtn}
+                        style={st.inlineBtn}
                         onPress={crearNuevaOficina}
                       >
-                        <Text style={styles.inlineBtnText}>
-                          Guardar Oficina
-                        </Text>
+                        <Text style={st.inlineBtnText}>Guardar Oficina</Text>
                       </TouchableOpacity>
                     </View>
                   )}
 
                   {/* Unidad */}
                   {empOficinaId !== "" && (
-                    <View style={styles.inputGroup}>
-                      <View style={styles.labelRow}>
-                        <Text style={[styles.label, { color: c.textMuted }]}>
+                    <View style={st.inputGroup}>
+                      <View style={st.labelRow}>
+                        <Text style={[st.label, { color: c.textMuted }]}>
                           Unidad
                         </Text>
                         <TouchableOpacity
@@ -968,20 +1341,17 @@ export default function EmpleadosReceptoresScreen() {
                       </ThemedPicker>
                     </View>
                   )}
-
                   {mostrarNuevaUnidad && empOficinaId !== "" && (
                     <View
                       style={[
-                        styles.inlineForm,
+                        st.inlineForm,
                         {
                           backgroundColor: c.surface3,
                           borderColor: c.avatarBorder,
                         },
                       ]}
                     >
-                      <Text
-                        style={[styles.inlineFormTitle, { color: c.accent }]}
-                      >
+                      <Text style={[st.inlineFormTitle, { color: c.accent }]}>
                         Nueva Unidad
                       </Text>
                       <ThemedInput
@@ -994,23 +1364,23 @@ export default function EmpleadosReceptoresScreen() {
                       <ThemedInput
                         value={nuevaUnidadCargo}
                         onChangeText={setNuevaUnidadCargo}
-                        placeholder="Cargo de esta unidad"
+                        placeholder="Cargo (opcional)"
                         colors={c}
                       />
                       <TouchableOpacity
-                        style={styles.inlineBtn}
+                        style={st.inlineBtn}
                         onPress={crearNuevaUnidad}
                       >
-                        <Text style={styles.inlineBtnText}>Guardar Unidad</Text>
+                        <Text style={st.inlineBtnText}>Guardar Unidad</Text>
                       </TouchableOpacity>
                     </View>
                   )}
 
                   {/* Cargo */}
                   {empUnidad !== "" && (
-                    <View style={styles.inputGroup}>
-                      <View style={styles.labelRow}>
-                        <Text style={[styles.label, { color: c.textMuted }]}>
+                    <View style={st.inputGroup}>
+                      <View style={st.labelRow}>
+                        <Text style={[st.label, { color: c.textMuted }]}>
                           Cargo
                         </Text>
                         <TouchableOpacity
@@ -1052,41 +1422,38 @@ export default function EmpleadosReceptoresScreen() {
                       </ThemedPicker>
                     </View>
                   )}
-
                   {mostrarNuevoCargo && empUnidad !== "" && (
                     <View
                       style={[
-                        styles.inlineForm,
+                        st.inlineForm,
                         {
                           backgroundColor: c.surface3,
                           borderColor: c.avatarBorder,
                         },
                       ]}
                     >
-                      <Text
-                        style={[styles.inlineFormTitle, { color: c.accent }]}
-                      >
+                      <Text style={[st.inlineFormTitle, { color: c.accent }]}>
                         Nuevo Cargo
                       </Text>
                       <ThemedInput
                         value={nuevoCargo}
                         onChangeText={setNuevoCargo}
-                        placeholder="Nuevo cargo"
+                        placeholder="Nombre del cargo"
                         colors={c}
                       />
                       <TouchableOpacity
-                        style={styles.inlineBtn}
+                        style={st.inlineBtn}
                         onPress={crearNuevoCargo}
                       >
-                        <Text style={styles.inlineBtnText}>Guardar Cargo</Text>
+                        <Text style={st.inlineBtnText}>Guardar Cargo</Text>
                       </TouchableOpacity>
                     </View>
                   )}
                 </>
               ) : (
                 <>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Nombre Completo
                     </Text>
                     <ThemedInput
@@ -1096,21 +1463,50 @@ export default function EmpleadosReceptoresScreen() {
                       colors={c}
                     />
                   </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Correo Electrónico
                     </Text>
                     <ThemedInput
                       value={recCorreo}
-                      onChangeText={setRecCorreo}
+                      onChangeText={(v) => {
+                        setRecCorreo(v);
+                        setErrorCorreo("");
+                      }}
                       placeholder="correo@ejemplo.com"
                       keyboardType="email-address"
                       autoCapitalize="none"
                       colors={c}
                     />
+                    {errorCorreo ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          marginTop: 6,
+                          gap: 5,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="alert-circle"
+                          size={14}
+                          color="#ef4444"
+                        />
+                        <Text
+                          style={{
+                            color: "#ef4444",
+                            fontSize: 12,
+                            fontWeight: "600",
+                            flex: 1,
+                          }}
+                        >
+                          {errorCorreo}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Empresa
                     </Text>
                     <ThemedInput
@@ -1120,8 +1516,8 @@ export default function EmpleadosReceptoresScreen() {
                       colors={c}
                     />
                   </View>
-                  <View style={styles.inputGroup}>
-                    <Text style={[styles.label, { color: c.textMuted }]}>
+                  <View style={st.inputGroup}>
+                    <Text style={[st.label, { color: c.textMuted }]}>
                       Cargo
                     </Text>
                     <ThemedInput
@@ -1134,23 +1530,20 @@ export default function EmpleadosReceptoresScreen() {
                 </>
               )}
 
-              <View style={styles.modalButtons}>
+              <View style={st.modalButtons}>
                 <TouchableOpacity
                   style={[
-                    styles.cancelBtn,
+                    st.cancelBtn,
                     { backgroundColor: c.surface2, borderColor: c.border2 },
                   ]}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={[styles.cancelBtnText, { color: c.textSub }]}>
+                  <Text style={[st.cancelBtnText, { color: c.textSub }]}>
                     Cancelar
                   </Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.saveBtn}
-                  onPress={guardarRegistro}
-                >
-                  <Text style={styles.saveBtnText}>Guardar</Text>
+                <TouchableOpacity style={st.saveBtn} onPress={guardarRegistro}>
+                  <Text style={st.saveBtnText}>Guardar</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1161,7 +1554,7 @@ export default function EmpleadosReceptoresScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const st = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1173,7 +1566,6 @@ const styles = StyleSheet.create({
   headerRowSmall: { flexDirection: "column", alignItems: "flex-start" },
   mainTitle: { fontSize: 24, fontWeight: "800" },
   subTitle: { fontSize: 13, marginTop: 2 },
-
   addBtn: {
     flexDirection: "row",
     backgroundColor: "#09528e",
@@ -1213,7 +1605,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     paddingHorizontal: 12,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
   },
   searchInput: {
@@ -1223,6 +1615,40 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
   },
 
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 4,
+  },
+  filterButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  filterButtonActive: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  filterButtonText: { fontWeight: "600", fontSize: 13 },
+
+  pageInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  pageInfoText: { fontSize: 12, fontWeight: "600" },
+
   userCard: {
     padding: 14,
     borderRadius: 14,
@@ -1230,9 +1656,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
     elevation: 2,
   },
   avatarContainer: {
@@ -1275,6 +1701,8 @@ const styles = StyleSheet.create({
   roleBadgeText: { fontSize: 11, fontWeight: "600" },
   emailText: { fontSize: 13, marginLeft: 5, flex: 1 },
   switchLabel: { fontSize: 10, marginBottom: 3, fontWeight: "600" },
+
+  loadingText: { marginTop: 12, fontSize: 14 },
   emptyState: {
     alignItems: "center",
     paddingVertical: 50,
@@ -1283,6 +1711,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   emptyStateTitle: { fontSize: 17, fontWeight: "700", marginTop: 10 },
+  footerInfo: {
+    textAlign: "center",
+    fontSize: 12,
+    marginTop: 8,
+    marginBottom: 4,
+  },
 
   modalOverlay: {
     flex: 1,
@@ -1369,30 +1803,4 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   inlineBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  filterContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 4,
-  },
-  filterButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  filterButtonActive: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  filterButtonText: {
-    fontWeight: "600",
-    fontSize: 13,
-  },
 });

@@ -434,7 +434,7 @@ export default function PaseSalidaScreen() {
           receptorEmpresa: empresaRec,
           motivo: motivoDesc,
           titulo: tituloDoc,
-          parrafoIntro: `Por este medio se hace entrega a ${nombreRec || "—"} de la Empresa ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`,
+          parrafoIntro: `Por este medio se hace entrega a ${nombreRec || "—"} de ${empresaRec || "—"}, para que ${motivoDesc || "—"}:`,
           correlativoFinal,
           items: equiposItems.map((eq) => ({
             marca: eq.marca || "N/A",

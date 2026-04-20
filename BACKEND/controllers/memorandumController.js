@@ -36,7 +36,6 @@ exports.crearMemorandum = async (req, res) => {
     let cargoReceptor = "S/C";
 
     if (idEmpleados) {
-      // ← JOIN con oficina para obtener el cargo, igual que en actasController
       const [empData] = await connection.query(
         `SELECT e.nomEmp, o.cargoOfi
                  FROM empleados e

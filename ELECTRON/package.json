@@ -5,9 +5,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:dev": "cross-env NODE_ENV=development electron-builder --win portable",
-    "pack": "electron-packager . CONADEH-Sistema --platform=win32 --arch=x64 --out=release --overwrite ",
-    "build:prod": "electron-builder --win portable"
+    "build:web": "expo export --platform web",
+    "build:prod": "npm run build:web && electron-builder --win portable",
+    "pack": "electron-packager . CONADEH-Sistema --platform=win32 --arch=x64 --out=release --overwrite"
   },
   "build": {
     "appId": "com.conadeh.gestion",
@@ -15,6 +15,14 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "assets/**/*",
+      "dist/**/*"
+    ],
+    "asar": true,
     "win": {
       "target": "portable",
       "icon": "assets/icon.ico"
@@ -26,7 +34,6 @@
   "devDependencies": {
     "cross-env": "^10.1.0",
     "electron": "^40.2.1",
-    "electron-builder": "^26.7.0",
-    "electron-packager": "^17.1.2"
+    "electron-builder": "^26.7.0"
   }
 }

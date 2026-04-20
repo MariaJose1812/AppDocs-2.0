@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { obtenerPlantillaActiva } from "../services/plantillasCache";
 
-//Hook que devuelve la configuración completa de la plantilla activa del tipo de documento indicado.
+//Hook que devuelve la configuración completa de la plantilla activa del tipo de documento indicado
 
 export function usePlantillaDinamica(tipoDoc) {
   const [config, setConfig] = useState(null);

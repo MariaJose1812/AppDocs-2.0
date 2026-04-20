@@ -28,34 +28,50 @@ router.get("/empleados", async (req, res) => {
 // Crear empleado
 router.post("/empleados", async (req, res) => {
   try {
-    const { nomEmp, corEmp, idOficina, dniEmp } = req.body;
+    let { nomEmp, corEmp, idOficina, dniEmp } = req.body;
 
-    if (!nomEmp || !corEmp || !idOficina) {
-      return res.status(400).json({
-        error: "Nombre, correo y oficina son obligatorios",
-      });
+    nomEmp = nomEmp?.trim();
+    if (!nomEmp || !idOficina) {
+      return res
+        .status(400)
+        .json({ error: "Nombre y oficina son obligatorios" });
     }
 
-    const [existingRows] = await db.query(
-      "SELECT idEmpleados FROM empleados WHERE corEmp = ? LIMIT 1",
-      [corEmp],
-    );
-    if (existingRows.length > 0) {
-      return res
-        .status(409)
-        .json({ error: "El correo ya está registrado en el sistema" });
+    let correoFinal = corEmp?.trim() || null;
+
+    if (correoFinal !== null) {
+      // Validar formato de correo
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(correoFinal)) {
+        return res
+          .status(400)
+          .json({ error: "El formato del correo no es válido" });
+      }
+
+      const [existingRows] = await db.query(
+        `SELECT e.idEmpleados, e.nomEmp 
+         FROM empleados e
+         WHERE e.corEmp = ? LIMIT 1`,
+        [correoFinal],
+      );
+
+      if (existingRows.length > 0) {
+        return res.status(409).json({
+          error: `El correo ya está registrado`,
+        });
+      }
     }
 
     const [result] = await db.query(
       `INSERT INTO empleados (nomEmp, corEmp, dniEmp, idOficina, estEmp) 
        VALUES (?, ?, ?, ?, 'Activo')`,
-      [nomEmp, corEmp, dniEmp || null, idOficina],
+      [nomEmp, correoFinal, dniEmp?.trim() || null, idOficina],
     );
 
     const [nuevoEmpleado] = await db.query(
       `SELECT 
-        e.idEmpleados, e.nomEmp, e.corEmp, e.dniEmp, e.estEmp,
-        o.nomOficina, o.unidad, o.cargoOfi AS cargoEmp
+         e.idEmpleados, e.nomEmp, e.corEmp, e.dniEmp, e.estEmp,
+         o.nomOficina, o.unidad, o.cargoOfi AS cargoEmp
        FROM empleados e
        LEFT JOIN oficina o ON e.idOficina = o.idOficina
        WHERE e.idEmpleados = ?`,
@@ -64,7 +80,68 @@ router.post("/empleados", async (req, res) => {
 
     res.status(201).json(nuevoEmpleado[0]);
   } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "El correo ya está registrado" });
+    }
     console.error("Error creando empleado:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+// Actualizar empleado
+router.put("/empleados/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    let { nomEmp, corEmp, idOficina, dniEmp } = req.body;
+
+    nomEmp = nomEmp?.trim();
+    if (!nomEmp || !idOficina) {
+      return res
+        .status(400)
+        .json({ error: "Nombre y oficina son obligatorios" });
+    }
+
+    let correoFinal = corEmp?.trim() || null;
+    if (correoFinal !== null) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(correoFinal)) {
+        return res
+          .status(400)
+          .json({ error: "El formato del correo no es válido" });
+      }
+
+      const [existingRows] = await db.query(
+        `SELECT idEmpleados FROM empleados WHERE corEmp = ? AND idEmpleados != ? LIMIT 1`,
+        [correoFinal, id],
+      );
+      if (existingRows.length > 0) {
+        return res
+          .status(409)
+          .json({ error: "El correo ya está registrado por otro empleado" });
+      }
+    }
+
+    await db.query(
+      `UPDATE empleados 
+       SET nomEmp = ?, corEmp = ?, dniEmp = ?, idOficina = ?
+       WHERE idEmpleados = ?`,
+      [nomEmp, correoFinal, dniEmp?.trim() || null, idOficina, id],
+    );
+
+    // Obtener el empleado actualizado con los datos de oficina
+    const [updated] = await db.query(
+      `SELECT 
+         e.idEmpleados, e.nomEmp, e.corEmp, e.dniEmp, e.estEmp,
+         o.nomOficina, o.unidad, o.cargoOfi AS cargoEmp
+       FROM empleados e
+       LEFT JOIN oficina o ON e.idOficina = o.idOficina
+       WHERE e.idEmpleados = ?`,
+      [id],
+    );
+
+    res.json(updated[0]);
+  } catch (error) {
+    console.error("Error actualizando empleado:", error);
     res.status(500).json({ error: "Error del servidor" });
   }
 });

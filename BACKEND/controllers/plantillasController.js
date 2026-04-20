@@ -23,7 +23,7 @@ exports.obtenerPlantillas = async (req, res) => {
   }
 };
 
-// GET plantilla activa por tipo, incluye fechaModificacion para el cache
+// GET plantilla activa por tipo
 exports.obtenerPlantillaActiva = async (req, res) => {
   const { tipoActa } = req.params;
   try {

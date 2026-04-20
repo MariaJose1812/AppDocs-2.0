@@ -54,32 +54,29 @@ export default function Header() {
       }
     ]}>
       
-      {/* --- SECCIÓN IZQUIERDA: Perfil del Usuario --- */}
+      {/*PERFIL DEL USUARIO*/}
       <View style={styles.userInfoContainer}>
-        {/* El icono cambia a un gris más claro en modo oscuro */}
         <MaterialCommunityIcons 
           name="account-circle" 
           size={38} 
           color={isDarkMode ? '#cbd5e1' : '#94a3b8'} 
         />
         <View style={styles.userDetails}>
-          {/* El nombre toma el color principal del tema (Blanco en oscuro, Negro en claro) */}
           <Text style={[styles.userNameText, { color: Colors[colorScheme].text }]} numberOfLines={1}>
             {userName || 'Cargando...'}
           </Text>
-          {/* El cargo usa un gris adaptable */}
           <Text style={[styles.userRoleText, { color: isDarkMode ? '#94a3b8' : '#64748b' }]} numberOfLines={1}>
             {userRole || 'Usuario'}
           </Text>
         </View>
       </View>
 
-      {/* --- SECCIÓN CENTRAL: Título --- */}
+      {/*TITULO*/}
       <View pointerEvents="none" style={styles.titleContainer}>
         <Text style={[styles.logoText, { color: Colors[colorScheme].text }]}>INFOTECNOLOGÍA</Text>
       </View>
       
-      {/* --- SECCIÓN DERECHA: Acciones --- */}
+      {/*ACCIONES*/}
       <View style={styles.rightActions}>
         
         <TouchableOpacity 
@@ -100,7 +97,7 @@ export default function Header() {
         
       </View>
       
-      {/* --- MODAL --- */}
+      {/*MODAL */}
       <Modal
         visible={modalVisible}
         transparent={true}
@@ -165,7 +162,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   
-  /* --- ESTILOS DEL USUARIO --- */
   userInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -178,15 +174,11 @@ const styles = StyleSheet.create({
   userNameText: {
     fontSize: 14,
     fontWeight: '700',
-    // ¡Eliminamos el color fijo de aquí!
   },
   userRoleText: {
     fontSize: 12,
     marginTop: 2,
-    // ¡Eliminamos el color fijo de aquí!
   },
-
-  /* --- RESTO DE ESTILOS INTACTOS --- */
   titleContainer: {
     position: 'absolute',
     left: 0,
@@ -212,7 +204,6 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
 
-  // Modal styles (se mantienen iguales)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.5)', 
