@@ -728,6 +728,7 @@ export default function EmpleadosReceptoresScreen() {
 
       return (
         <View
+          key={id}
           style={[
             st.userCard,
             {

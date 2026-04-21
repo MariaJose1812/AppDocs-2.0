@@ -108,6 +108,7 @@ export default function PlantillasScreen() {
           text: "Eliminar",
           style: "destructive",
           onPress: () => {
+            ejecutar();
           },
         },
       ],
@@ -138,7 +139,7 @@ export default function PlantillasScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* TABS — scroll horizontal */}
+          {/* scroll horizontal */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}

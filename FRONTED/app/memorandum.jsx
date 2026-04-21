@@ -362,7 +362,18 @@ export default function MemorandumScreen() {
       EMISOR_KEY,
       JSON.stringify({ nombre: emisorNombre, cargo: emisorCargo }),
     );
+
+    // Obtener idUsuarios del almacenamiento local
+    const idUsuarios = await AsyncStorage.getItem("idUsuarios");
+    if (!idUsuarios) {
+      mostrarAlerta(
+        "Error",
+        "No se pudo identificar al usuario. Inicia sesión nuevamente.",
+      );
+      return;
+    }
     const payload = {
+      idUsuarios: parseInt(idUsuarios),
       idEmpleados: idEmp,
       idReceptores: idRec,
       asunto_MMEnc: asunto,

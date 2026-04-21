@@ -171,8 +171,10 @@ export default function ActaEntregaScreen() {
   const [cargosList, setCargosList] = useState([]);
   const [empleadosBD, setEmpleadosBD] = useState([]);
   const [tiposEquipoBD, setTiposEquipoBD] = useState([]);
-  const [marcasBD, setMarcasBD] = useState([]);
-  const [modelosBD, setModelosBD] = useState([]);
+  const [marcasOpciones, setMarcasOpciones] = useState([]);
+  const [modelosOpciones, setModelosOpciones] = useState([]);
+  //const [marcasBD, setMarcasBD] = useState([]);
+  //const [modelosBD, setModelosBD] = useState([]);
   const [usuarioLogueado, setUsuarioLogueado] = useState("");
   const [cargoLogueado, setCargoLogueado] = useState("");
   const [oficinaSel, setOficinaSel] = useState("");
@@ -295,8 +297,6 @@ export default function ActaEntregaScreen() {
         setEmpleadosBD(resEmp.data);
         setOficinasBD(resOfi.data);
         setTiposEquipoBD(resTipo.data);
-        setMarcasBD(resMarca.data);
-        setModelosBD(resMod.data);
         setReceptoresBD(resRec.data);
       } catch (error) {
         console.error("Error al cargar datos:", error);
@@ -358,29 +358,29 @@ export default function ActaEntregaScreen() {
   //MARCAS — filtrar por tipo de equipo
   useEffect(() => {
     if (!tempTipo) {
-      setMarcasFiltradas([]);
+      setMarcasOpciones([]);
       setTempMarca("");
+      setModelosOpciones([]);
       setTempModelo("");
-      setModelosFiltrados([]);
       return;
     }
     setCargandoMarcas(true);
     api
       .get(`/catalogos/marcas/porTipo/${encodeURIComponent(tempTipo)}`)
       .then((res) => {
-        setMarcasFiltradas(res.data);
+        setMarcasOpciones(res.data);
         setTempMarca("");
+        setModelosOpciones([]);
         setTempModelo("");
-        setModelosFiltrados([]);
       })
-      .catch((err) => console.error("Error filtrando marcas:", err))
+      .catch((err) => console.error(err))
       .finally(() => setCargandoMarcas(false));
   }, [tempTipo]);
 
   //MODELOS — filtrar por tipo de equipo y marca
   useEffect(() => {
     if (!tempTipo || !tempMarca) {
-      setModelosFiltrados([]);
+      setModelosOpciones([]);
       setTempModelo("");
       return;
     }
@@ -390,10 +390,10 @@ export default function ActaEntregaScreen() {
         `/catalogos/modelos/porTipoMarca/${encodeURIComponent(tempTipo)}/${encodeURIComponent(tempMarca)}`,
       )
       .then((res) => {
-        setModelosFiltrados(res.data);
+        setModelosOpciones(res.data);
         setTempModelo("");
       })
-      .catch((err) => console.error("Error filtrando modelos:", err))
+      .catch((err) => console.error(err))
       .finally(() => setCargandoModelos(false));
   }, [tempTipo, tempMarca]);
 
@@ -432,27 +432,38 @@ export default function ActaEntregaScreen() {
     setItems(items.filter((item) => item._idTemporal !== idTemp));
   };
 
-  const handleChangeValor = useCallback((id, valor) =>
-    setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })), []);
+  const handleChangeValor = useCallback(
+    (id, valor) => setValoresCamposExtra((prev) => ({ ...prev, [id]: valor })),
+    [],
+  );
 
-  const handleAgregarFila = useCallback((tablaId, filaVacia) =>
-    setFilasTablas((prev) => ({
-      ...prev,
-      [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
-    })), []);
+  const handleAgregarFila = useCallback(
+    (tablaId, filaVacia) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: [...(prev[tablaId] || []), { ...filaVacia }],
+      })),
+    [],
+  );
 
-  const handleEliminarFila = useCallback((tablaId, index) =>
-    setFilasTablas((prev) => ({
-      ...prev,
-      [tablaId]: prev[tablaId].filter((_, i) => i !== index),
-    })), []);
+  const handleEliminarFila = useCallback(
+    (tablaId, index) =>
+      setFilasTablas((prev) => ({
+        ...prev,
+        [tablaId]: prev[tablaId].filter((_, i) => i !== index),
+      })),
+    [],
+  );
 
-  const handleCambiarFila = useCallback((tablaId, index, colId, valor) =>
-    setFilasTablas((prev) => {
-      const nuevas = [...(prev[tablaId] || [])];
-      nuevas[index] = { ...nuevas[index], [colId]: valor };
-      return { ...prev, [tablaId]: nuevas };
-    }), []);
+  const handleCambiarFila = useCallback(
+    (tablaId, index, colId, valor) =>
+      setFilasTablas((prev) => {
+        const nuevas = [...(prev[tablaId] || [])];
+        nuevas[index] = { ...nuevas[index], [colId]: valor };
+        return { ...prev, [tablaId]: nuevas };
+      }),
+    [],
+  );
 
   const mostrarAlerta = (titulo, mensaje = "", botones = []) => {
     const alertButtons =
@@ -711,7 +722,7 @@ export default function ActaEntregaScreen() {
         return `data:image/jpeg;base64,${base64}`;
       };
 
-      // Convertir imágenes a base64 
+      // Convertir imágenes a base64
       const imagenesBase64 = [];
       if (imagenes.length > 0) {
         for (const img of imagenes) {
@@ -888,7 +899,7 @@ export default function ActaEntregaScreen() {
     [c],
   );
 
-  // Renderizado
+  
   return (
     <SafeAreaView style={styles.container}>
       <Header />
@@ -1249,7 +1260,7 @@ export default function ActaEntregaScreen() {
                   <ThemedPicker
                     selectedValue={tempMarca}
                     onValueChange={setTempMarca}
-                    enabled={marcasFiltradas.length > 0 && !cargandoMarcas}
+                    enabled={marcasOpciones.length > 0 && !cargandoMarcas}
                     colors={c}
                   >
                     <Picker.Item
@@ -1263,7 +1274,7 @@ export default function ActaEntregaScreen() {
                       value=""
                       color={c.textMuted}
                     />
-                    {marcasFiltradas.map((item, idx) => (
+                    {marcasOpciones.map((item, idx) => (
                       <Picker.Item
                         key={`marca-${idx}`}
                         label={item.marca}
@@ -1282,7 +1293,7 @@ export default function ActaEntregaScreen() {
                   <ThemedPicker
                     selectedValue={tempModelo}
                     onValueChange={setTempModelo}
-                    enabled={modelosFiltrados.length > 0 && !cargandoModelos}
+                    enabled={modelosOpciones.length > 0 && !cargandoModelos}
                     colors={c}
                   >
                     <Picker.Item
@@ -1296,7 +1307,7 @@ export default function ActaEntregaScreen() {
                       value=""
                       color={c.textMuted}
                     />
-                    {modelosFiltrados.map((item, idx) => (
+                    {modelosOpciones.map((item, idx) => (
                       <Picker.Item
                         key={`modelo-${idx}`}
                         label={item.modelo}

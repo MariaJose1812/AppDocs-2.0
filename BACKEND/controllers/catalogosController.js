@@ -70,7 +70,7 @@ exports.createOficina = async (req, res) => {
 exports.getTiposEquipo = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT tipo FROM catalogo_tipos ORDER BY tipo ASC",
+      "SELECT idTipo, tipo FROM catalogo_tipos ORDER BY tipo ASC",
     );
     res.json(rows);
   } catch (error) {
@@ -81,7 +81,10 @@ exports.getTiposEquipo = async (req, res) => {
 exports.getMarcas = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT marca FROM catalogo_marcas ORDER BY marca ASC",
+      `SELECT cm.idMarca, cm.marca, cm.idTipo, ct.tipo AS nomTipo
+       FROM catalogo_marcas cm
+       LEFT JOIN catalogo_tipos ct ON cm.idTipo = ct.idTipo
+       ORDER BY ct.tipo ASC, cm.marca ASC`,
     );
     res.json(rows);
   } catch (error) {
@@ -92,7 +95,11 @@ exports.getMarcas = async (req, res) => {
 exports.getModelos = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT modelo FROM catalogo_modelos ORDER BY modelo ASC",
+      `SELECT cm.idModelo, cm.modelo, cm.idMarca, ma.marca, ma.idTipo, ct.tipo AS nomTipo
+       FROM catalogo_modelos cm
+       LEFT JOIN catalogo_marcas ma ON cm.idMarca = ma.idMarca
+       LEFT JOIN catalogo_tipos ct ON ma.idTipo = ct.idTipo
+       ORDER BY ct.tipo ASC, ma.marca ASC, cm.modelo ASC`,
     );
     res.json(rows);
   } catch (error) {
@@ -106,10 +113,10 @@ exports.postTipo = async (req, res) => {
   if (!tipo?.trim())
     return res.status(400).json({ error: "El campo tipo es obligatorio." });
   try {
-    await db.query("INSERT INTO catalogo_tipos (tipo) VALUES (?)", [
+    const [result] = await db.query("INSERT INTO catalogo_tipos (tipo) VALUES (?)", [
       tipo.trim(),
     ]);
-    res.json({ ok: true, tipo: tipo.trim() });
+    res.json({ idTipo: result.insertId, tipo: tipo.trim() });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY")
       return res.status(409).json({ error: "El tipo ya existe." });
@@ -117,15 +124,20 @@ exports.postTipo = async (req, res) => {
   }
 };
 
+// POST MARCA
 exports.postMarca = async (req, res) => {
-  const { marca } = req.body;
-  if (!marca?.trim())
-    return res.status(400).json({ error: "El campo marca es obligatorio." });
+  const { marca, idTipo } = req.body;
+
+  if (!marca?.trim() || !idTipo) {
+    return res.status(400).json({ error: "El campo marca y el idTipo son obligatorios." });
+  }
+
   try {
-    await db.query("INSERT INTO catalogo_marcas (marca) VALUES (?)", [
-      marca.trim(),
-    ]);
-    res.json({ ok: true, marca: marca.trim() });
+    const [result] = await db.query(
+      "INSERT INTO catalogo_marcas (marca, idTipo) VALUES (?, ?)",
+      [marca.trim(), idTipo],
+    );
+    res.json({ idMarca: result.insertId, marca: marca.trim(), idTipo });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY")
       return res.status(409).json({ error: "La marca ya existe." });
@@ -133,15 +145,20 @@ exports.postMarca = async (req, res) => {
   }
 };
 
+// POST MODELO
 exports.postModelo = async (req, res) => {
-  const { modelo } = req.body;
-  if (!modelo?.trim())
-    return res.status(400).json({ error: "El campo modelo es obligatorio." });
+  const { modelo, idMarca } = req.body;
+
+  if (!modelo?.trim() || !idMarca) {
+    return res.status(400).json({ error: "El campo modelo y el idMarca son obligatorios." });
+  }
+
   try {
-    await db.query("INSERT INTO catalogo_modelos (modelo) VALUES (?)", [
-      modelo.trim(),
-    ]);
-    res.json({ ok: true, modelo: modelo.trim() });
+    const [result] = await db.query(
+      "INSERT INTO catalogo_modelos (modelo, idMarca) VALUES (?, ?)",
+      [modelo.trim(), idMarca],
+    );
+    res.json({ idModelo: result.insertId, modelo: modelo.trim(), idMarca });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY")
       return res.status(409).json({ error: "El modelo ya existe." });
@@ -151,29 +168,38 @@ exports.postModelo = async (req, res) => {
 
 exports.getMarcasPorTipo = async (req, res) => {
   try {
+    const { tipo } = req.params;
     const [rows] = await db.query(
-      `SELECT DISTINCT marca FROM equipo 
-       WHERE tipo = ? AND marca IS NOT NULL AND marca != ''
-       ORDER BY marca ASC`,
-      [req.params.tipo],
+      `SELECT cm.idMarca, cm.marca
+       FROM catalogo_marcas cm
+       INNER JOIN catalogo_tipos ct ON cm.idTipo = ct.idTipo
+       WHERE ct.tipo = ?
+       ORDER BY cm.marca ASC`,
+      [tipo],
     );
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (e) {
+    console.error("Error filtrando marcas por tipo:", e);
+    res.status(500).json({ error: "Error filtrando marcas" });
   }
 };
 
 exports.getModelosPorTipoMarca = async (req, res) => {
   try {
+    const { tipo, marca } = req.params;
     const [rows] = await db.query(
-      `SELECT DISTINCT modelo FROM equipo 
-       WHERE tipo = ? AND marca = ? AND modelo IS NOT NULL AND modelo != ''
-       ORDER BY modelo ASC`,
-      [req.params.tipo, req.params.marca],
+      `SELECT cm.idModelo, cm.modelo
+       FROM catalogo_modelos cm
+       INNER JOIN catalogo_marcas ma ON cm.idMarca = ma.idMarca
+       INNER JOIN catalogo_tipos ct ON ma.idTipo = ct.idTipo
+       WHERE ct.tipo = ? AND ma.marca = ?
+       ORDER BY cm.modelo ASC`,
+      [tipo, marca],
     );
     res.json(rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (e) {
+    console.error("Error filtrando modelos:", e);
+    res.status(500).json({ error: "Error filtrando modelos" });
   }
 };
 
