@@ -1,0 +1,18 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.conadeh.gestion
+productName: CONADEH Gestión Documental
+files:
+  - filter:
+      - main.js
+      - preload.js
+      - splash.html
+      - assets/**/*
+asar: true
+win:
+  target: portable
+  icon: assets/icon.ico
+portable:
+  artifactName: CONADEH-Sistema-${version}.exe
+electronVersion: 40.2.1

@@ -37,7 +37,7 @@ router.post("/receptores", async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO receptores (nomRec, corRec, emprRec, cargoRec, estRec)
        VALUES (?, ?, ?, ?, 'Activo')`,
-      [nomRec, corRec, emprRec, cargoRec]
+      [nomRec, corRec, emprRec, cargoRec],
     );
     const [nuevoReceptor] = await db.query(
       `SELECT idReceptores, nomRec, corRec, emprRec, cargoRec, estRec
@@ -52,16 +52,49 @@ router.post("/receptores", async (req, res) => {
   }
 });
 
+// Actualizar receptor 
+router.put("/receptores/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nomRec, corRec, emprRec, cargoRec } = req.body;
+
+    // Verificar si el correo ya existe en otro receptor
+    const [existing] = await db.query(
+      "SELECT idReceptores FROM receptores WHERE corRec = ? AND idReceptores != ?",
+      [corRec, id],
+    );
+    if (existing.length > 0) {
+      return res.status(409).json({ error: "El correo ya está registrado" });
+    }
+
+    await db.query(
+      `UPDATE receptores 
+       SET nomRec = ?, corRec = ?, emprRec = ?, cargoRec = ?
+       WHERE idReceptores = ?`,
+      [nomRec, corRec, emprRec, cargoRec, id],
+    );
+
+    const [updated] = await db.query(
+      "SELECT idReceptores, nomRec, corRec, emprRec, cargoRec, estRec FROM receptores WHERE idReceptores = ?",
+      [id],
+    );
+    res.json(updated[0]);
+  } catch (error) {
+    console.error("Error actualizando receptor:", error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
 //Cambiar estado del receptor (Activo - Inactivo)
 router.put("/receptores/:id/estado", async (req, res) => {
   try {
     const { id } = req.params;
-    const { estado } = req.body; 
+    const { estado } = req.body;
 
-    await db.query(
-      "UPDATE receptores SET estRec = ? WHERE idReceptores = ?",
-      [estado, id]
-    );
+    await db.query("UPDATE receptores SET estRec = ? WHERE idReceptores = ?", [
+      estado,
+      id,
+    ]);
     res.json({ mensaje: "Estado actualizado" });
   } catch (error) {
     console.error("Error actualizando estado:", error);

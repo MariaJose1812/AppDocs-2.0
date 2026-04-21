@@ -1,13 +1,17 @@
 {
   "expo": {
-    "name": "Garant",
-    "slug": "FRONTED",
+    "name": "Gestión Documental IT",
+    "slug": "infotec-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/it.png",
     "scheme": "fronted",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "platforms": ["ios", "android", "web"],
+    "web": {
+      "bundler": "metro"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -22,10 +26,7 @@
       "package": "com.mariajose1812.FRONTED",
       "usesCleartextTraffic": true
     },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
+
     "plugins": [
       "expo-router",
       [

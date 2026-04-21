@@ -334,6 +334,7 @@ export default function EmpleadosReceptoresScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [empleadoEditando, setEmpleadoEditando] = useState(null);
   const [receptorEditando, setReceptorEditando] = useState(null);
+  const [editandoTipo, setEditandoTipo] = useState(null);
 
   const onBusquedaChange = (txt) => {
     setBusqueda(txt);
@@ -683,36 +684,39 @@ export default function EmpleadosReceptoresScreen() {
 
     //EMPLEADO
     if (item.idEmpleados) {
+      setEditandoTipo("empleado");
+      setTipoActivo("empleados");
       setEmpleadoEditando(item);
-
       setEmpNom(item.nomEmp || "");
       setEmpCorreo(item.corEmp || "");
       setEmpDni(item.dniEmp || "");
       setEmpOficinaId(item.nomOficina || "");
       setEmpUnidad(item.unidad || "");
-
       const cargoRow = oficinasLista.find(
         (o) => o.nomOficina === item.nomOficina && o.cargoOfi === item.cargoEmp,
       );
-
       setEmpCargoId(cargoRow ? String(cargoRow.idOficina) : "");
 
       setRecNom("");
       setRecCorreo("");
       setRecEmpresa("");
       setRecCargo("");
-    }
-
-    //RECEPTOR
-    if (item.idReceptores) {
+    } else if (item.idReceptores) {
+      setEditandoTipo("receptor");
+      setTipoActivo("receptores");
       setReceptorEditando(item);
-
       setRecNom(item.nomRec || "");
       setRecCorreo(item.corRec || "");
       setRecEmpresa(item.emprRec || "");
       setRecCargo(item.cargoRec || "");
-    }
 
+      setEmpNom("");
+      setEmpCorreo("");
+      setEmpDni("");
+      setEmpOficinaId("");
+      setEmpUnidad("");
+      setEmpCargoId("");
+    }
     setModalVisible(true);
   };
 
@@ -1116,7 +1120,9 @@ export default function EmpleadosReceptoresScreen() {
               </View>
               <Text style={[st.modalTitle, { color: c.text }]}>
                 {editando
-                  ? "Editar Empleado"
+                  ? editandoTipo === "empleado"
+                    ? "Editar Empleado"
+                    : "Editar Receptor"
                   : tipoActivo === "empleados"
                     ? "Nuevo Empleado"
                     : "Nuevo Receptor"}
@@ -1124,6 +1130,7 @@ export default function EmpleadosReceptoresScreen() {
               <TouchableOpacity
                 onPress={() => {
                   setModalVisible(false);
+                  setEditandoTipo(null);
                   setEditando(false);
                   setEmpleadoEditando(null);
                   limpiarFormularios();
