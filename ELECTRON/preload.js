@@ -1,27 +1,31 @@
 /**
- * preload.js — Bridge seguro entre Electron y la aplicación web
+ * preload.js — Puente seguro entre Electron y la aplicación React/Expo
  *
- * Este archivo se ejecuta en el contexto del renderer ANTES de que cargue
- * la página web. Expone de forma segura solo las funciones nativas necesarias,
- * sin dar acceso directo a Node.js desde la web (contextIsolation: true).
+ * Se ejecuta en el contexto del renderer ANTES de que cargue la página.
+ * Expone de forma controlada solo las funciones necesarias al frontend.
+ * contextIsolation: true garantiza que el código web no accede a Node.js.
  */
+
+"use strict";
 
 const { contextBridge, ipcRenderer } = require("electron");
 
-// Expone funciones nativas seguras bajo window.electronAPI
 contextBridge.exposeInMainWorld("electronAPI", {
-  // Obtener la versión de la app
+  // Versión de la aplicación 
   getVersion: () => ipcRenderer.invoke("get-app-version"),
 
-  // Diálogo para guardar archivos
+  // Diálogo nativo del sistema operativo para guardar archivos 
   showSaveDialog: (options) => ipcRenderer.invoke("show-save-dialog", options),
 
-  // Abrir URL en el navegador del sistema
+  // Abre una URL en el navegador predeterminado del sistema 
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
 
-  // Indica que la app está corriendo dentro de Electron
+  // URL del backend 
+  getBackendUrl: () => ipcRenderer.invoke("get-backend-url"),
+
+  // Flag para saber desde el frontend que se está dentro de Electron
   isElectron: true,
 
-  // Plataforma del sistema operativo
+  // Plataforma del SO: 'win32', 'darwin', 'linux'
   platform: process.platform,
 });

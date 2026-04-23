@@ -1,45 +1,76 @@
 {
-  "name": "electron",
+  "name": "sgd-conadeh",
   "version": "1.0.0",
-  "description": "Sistema de Gestión Documental CONADEH",
+  "description": "Sistema de Gestión Documental — CONADEH",
   "main": "main.js",
+  "author": "Unidad de Infotecnología — CONADEH",
+  "license": "UNLICENSED",
+  "private": true,
+
   "scripts": {
-    "start": "electron .",
-    "build:web": "npx expo export --platform web",
-    "pack": "electron-packager . CONADEH-Sistema --platform=win32 --arch=x64 --out=release --overwrite",
-     "dist": "electron-builder --win portable"
+    "dev":          "electron .",
+    "build:web":    "cd ../FRONTEND && npx expo export -p web --output-dir ../ELECTRON/dist",
+    "dist":         "npm run build:web && electron-builder --win portable",
+    "dist:win":     "npm run build:web && electron-builder --win",
+    "dist:dir":     "npm run build:web && electron-builder --dir"
   },
+
   "build": {
-    "appId": "com.conadeh.gestion",
-    "productName": "CONADEH Gestión Documental",
+    "appId":       "hn.conadeh.sgd",
+    "productName": "Sistema Gestión Documental",
+    "copyright":   "CONADEH — Unidad de Infotecnología",
+
     "directories": {
-      "output": "release"
+      "output":    "release",
+      "buildResources": "assets"
     },
+
     "files": [
       "main.js",
       "preload.js",
       "splash.html",
-      "assets/**/*"
+      "assets/**/*",
+      "package.json"
     ],
+
+    "extraResources": [
+      {
+        "from": "dist",
+        "to":   "dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../BACKEND",
+        "to":   "BACKEND"
+      }
+    ],
+
     "asar": true,
+
     "win": {
-      "target": "portable",
-      "icon": "assets/icon.ico"
+      "target": [
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon":            "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
+
     "portable": {
-      "artifactName": "CONADEH-Sistema-${version}.exe"
+      "artifactName": "SGD-CONADEH-${version}.exe",
+      "requestExecutionLevel": "user"
+    },
+
+    "nsis": {
+      "oneClick":        false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon":   "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "artifactName":    "SGD-CONADEH-Setup-${version}.exe"
     }
   },
+
   "devDependencies": {
-    "cross-env": "^10.1.0",
-    "electron": "^40.2.1",
+    "electron":         "^40.2.1",
     "electron-builder": "^26.7.0"
-  },
-  "extraResources": [
-  {
-    "from": "dist",
-    "to": "dist",
-    "filter": ["**/*"]
   }
-]
 }

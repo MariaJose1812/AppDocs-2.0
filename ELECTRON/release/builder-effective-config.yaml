@@ -1,18 +1,38 @@
 directories:
   output: release
-  buildResources: build
-appId: com.conadeh.gestion
-productName: CONADEH Gestión Documental
+  buildResources: assets
+appId: hn.conadeh.sgd
+productName: Sistema Gestión Documental
+copyright: CONADEH — Unidad de Infotecnología
 files:
   - filter:
       - main.js
       - preload.js
       - splash.html
       - assets/**/*
+      - package.json
+extraResources:
+  - from: dist
+    to: dist
+    filter:
+      - '**/*'
+  - from: ../BACKEND
+    to: BACKEND
 asar: true
 win:
-  target: portable
+  target:
+    - target: portable
+      arch:
+        - x64
   icon: assets/icon.ico
+  requestedExecutionLevel: asInvoker
 portable:
-  artifactName: CONADEH-Sistema-${version}.exe
+  artifactName: SGD-CONADEH-${version}.exe
+  requestExecutionLevel: user
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  artifactName: SGD-CONADEH-Setup-${version}.exe
 electronVersion: 40.2.1
